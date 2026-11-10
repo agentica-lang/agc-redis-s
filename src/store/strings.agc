@@ -2,7 +2,7 @@
 ## string holds at most `proto-max-bulk-len` bytes.
 
 import Keyspace from "keyspace"
-import {Value, joined_text, pending?} from "value"
+import {Value, joined_text, pending?, value_size, with_more} from "value"
 
 ## 512 MB, the default of `proto-max-bulk-len`.
 export MAX_BYTES = 536_870_912
@@ -77,6 +77,18 @@ export def get_range(text: Bytes, start: Int, stop: Int) -> Bytes
   end
 
   return text.slice(from, to - from + 1)
+end
+
+## The value after APPEND of `more`, or none when the total would pass `limit`
+## (the handler passes MAX_BYTES). The total counts the stored size, not the
+## new piece alone, and nothing is joined.
+export def append(held: Optional[Value], more: Bytes, limit: Int) -> Optional[Value]
+  base = held.unwrap_or(Value.Str("".bytes))
+  if value_size(base) + more.size > limit
+    return none
+  end
+
+  return some(with_more(base, more))
 end
 
 ## The keyspace with the string at each of `keys` joined into one `Str`. A value

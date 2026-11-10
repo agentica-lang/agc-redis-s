@@ -9,7 +9,7 @@ import {Call, Command, Outcome, fail, reply, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import Strings from "../store/strings"
-import {Value, joined_text, pending?, value_size, with_more} from "../store/value"
+import {Value, joined_text, pending?, value_size} from "../store/value"
 
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 NOT_INT = "ERR value is not an integer or out of range"
@@ -47,6 +47,11 @@ def lookup(call: Call, key: Bytes) -> Optional[Bytes]
     none -> return none
     some(value) -> return some(joined_text(value))
   end
+end
+
+# Whether a key holds a string; a value in pieces is not joined for it.
+def exists?(call: Call, key: Bytes) -> Bool
+  return Keyspace.get(call.keyspace, key, call.now_ms).some?
 end
 
 # The size of the string at a key, 0 if missing, without joining its pieces.
@@ -119,8 +124,13 @@ def set(call: Call) -> Outcome
     return fail(call, "ERR syntax error")
   end
 
-  old = lookup(call, call.args[0])
-  skipped = (options.nx and old.some?) or (options.xx and old.none?)
+  old: Optional[Bytes] = none
+  if options.get
+    old = lookup(call, call.args[0])
+  end
+
+  present = exists?(call, call.args[0])
+  skipped = (options.nx and present) or (options.xx and not present)
   answer = Reply.Simple("OK")
   if options.get
     answer = bulk_or_nil(old)
@@ -150,7 +160,7 @@ def getdel(call: Call) -> Outcome
 end
 
 def setnx(call: Call) -> Outcome
-  if lookup(call, call.args[0]).some?
+  if exists?(call, call.args[0])
     return reply(call, Reply.Integer(0))
   end
 
@@ -180,7 +190,7 @@ def msetnx(call: Call) -> Outcome
 
   i = 0
   while i < call.args.size
-    if lookup(call, call.args[i]).some?
+    if exists?(call, call.args[i])
       return reply(call, Reply.Integer(0))
     end
 
@@ -210,12 +220,11 @@ end
 def append(call: Call) -> Outcome
   key = call.args[0]
   more = call.args[1]
-  if size_of(call, key) + more.size > Strings.MAX_BYTES
-    return fail(call, TOO_BIG)
+  held = Keyspace.get(call.keyspace, key, call.now_ms)
+  case Strings.append(held, more, Strings.MAX_BYTES)
+    none -> return fail(call, TOO_BIG)
+    some(grown) -> return write(call, Keyspace.put(call.keyspace, key, grown), Reply.Integer(value_size(grown)))
   end
-
-  grown = with_more(Keyspace.get(call.keyspace, key, call.now_ms).unwrap_or(Value.Str("".bytes)), more)
-  return write(call, Keyspace.put(call.keyspace, key, grown), Reply.Integer(value_size(grown)))
 end
 
 def strlen(call: Call) -> Outcome

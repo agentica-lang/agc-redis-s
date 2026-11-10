@@ -261,6 +261,14 @@ def test_append_keeps_pieces_and_a_read_joins_them_once() -> Result[Void]
   try Test.eq(pending_at(start.databases, 0), true)
   try Test.eq(left_in(start.databases, 0).unwrap_or([]), "abcdef".bytes.to_a)
 
+  length = read_pieces(["STRLEN", "k0"])
+  try Test.eq(length.reply, ":6\r\n".bytes)
+  try Test.eq(pending_at(length.databases, 0), true)
+
+  nx = read_pieces(["SETNX", "k0", "z"])
+  try Test.eq(nx.reply, ":0\r\n".bytes)
+  try Test.eq(pending_at(nx.databases, 0), true)
+
   got = read_pieces(["GET", "k0"])
   try Test.eq(got.reply, "$6\r\nabcdef\r\n".bytes)
   try Test.eq(pending_at(got.databases, 0), false)
