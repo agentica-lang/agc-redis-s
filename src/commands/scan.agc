@@ -16,8 +16,8 @@ DEFAULT_COUNT = 10
 # A cursor past every hash: the scan answers an empty last page.
 BEYOND = 9_000_000_000
 
-# What the options say; `refused` is the error reply.
-struct Options
+## What the options say; `refused` is the error reply.
+export struct Options
   count: Int = DEFAULT_COUNT
   pattern: Optional[Bytes] = none
   ## The lowercase name after TYPE; a name that is no type lists nothing.
@@ -29,48 +29,49 @@ export def commands() -> List[Command]
   return [Command(name: "scan", arity: -2, handler: &scan)]
 end
 
-def scan(call: Call) -> Outcome
-  case cursor_of(call.args[0])
-    none -> return fail(call, "ERR invalid cursor")
-    some(cursor) -> return scan_from(call, cursor)
-  end
-end
-
-def scan_from(call: Call, cursor: Int) -> Outcome
-  options = read_options(call.args.drop(1))
-  case options.refused
-    some(text) -> return fail(call, text)
-    none -> nil
-  end
-
-  names = call.keyspace.entries.keys
-  page = Scan.page(names, cursor, options.count)
-  listed = page.keys.select do |key| wanted?(call, options, key) end
-  return reply(
-    call,
-    Reply.Array([Reply.Bulk("#{page.next}".bytes), Reply.Array(listed.map do |key| Reply.Bulk(key) end)]),
-  )
-end
-
-def wanted?(call: Call, options: Options, key: Bytes) -> Bool
-  case Keyspace.get(call.keyspace, key, call.now_ms)
-    none -> return false
-    some(value) ->
-      if options.type.some? and options.type != some(type_name(value))
-        return false
-      end
-  end
-
+## Whether a name passes MATCH (HSCAN filters field names with it too).
+export def matches?(options: Options, name: Bytes) -> Bool
   case options.pattern
     none -> return true
-    some(pattern) -> return (pattern.size == 1 and pattern[0] == STAR) or Glob.matches?(pattern, key)
+    some(pattern) -> return (pattern.size == 1 and pattern[0] == STAR) or Glob.matches?(pattern, name)
   end
 end
 
-# `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
-# text is 0. A number above 2^64 - 1 is an error (ERANGE), also after a `-`.
-# `-N` is a huge number, which is a cursor past the end.
-def cursor_of(text: Bytes) -> Optional[Int]
+## `typed` is true for SCAN; HSCAN has no TYPE option (a syntax error).
+export def read_options(words: List[Bytes], typed: Bool) -> Options
+  found = Options()
+  i = 0
+  while i < words.size
+    word = Args.lower(words[i])
+    has_value = i + 1 < words.size
+    if word == "count" and has_value
+      case Args.parse_int(words[i + 1])
+        none -> return found.with(refused: some("ERR value is not an integer or out of range"))
+        some(count) ->
+          if count < 1
+            return found.with(refused: some("ERR syntax error"))
+          end
+
+          found = found.with(count: count)
+      end
+    elsif word == "match" and has_value
+      found = found.with(pattern: some(words[i + 1]))
+    elsif word == "type" and has_value and typed
+      found = found.with(type: some(Args.lower(words[i + 1])))
+    else
+      return found.with(refused: some("ERR syntax error"))
+    end
+
+    i += 2
+  end
+
+  return found
+end
+
+## `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
+## text is 0. A number above 2^64 - 1 is an error (ERANGE), also after a `-`.
+## `-N` is a huge number, which is a cursor past the end.
+export def cursor_of(text: Bytes) -> Optional[Int]
   if text.empty?
     return some(0)
   end
@@ -101,6 +102,41 @@ def cursor_of(text: Bytes) -> Optional[Int]
   return some(significant.reduce(0) do |total, byte| total * 10 + byte - 48 end)
 end
 
+def scan(call: Call) -> Outcome
+  case cursor_of(call.args[0])
+    none -> return fail(call, "ERR invalid cursor")
+    some(cursor) -> return scan_from(call, cursor)
+  end
+end
+
+def scan_from(call: Call, cursor: Int) -> Outcome
+  options = read_options(call.args.drop(1), true)
+  case options.refused
+    some(text) -> return fail(call, text)
+    none -> nil
+  end
+
+  names = call.keyspace.entries.keys
+  page = Scan.page(names, cursor, options.count)
+  listed = page.keys.select do |key| wanted?(call, options, key) end
+  return reply(
+    call,
+    Reply.Array([Reply.Bulk("#{page.next}".bytes), Reply.Array(listed.map do |key| Reply.Bulk(key) end)]),
+  )
+end
+
+def wanted?(call: Call, options: Options, key: Bytes) -> Bool
+  case Keyspace.get(call.keyspace, key, call.now_ms)
+    none -> return false
+    some(value) ->
+      if options.type.some? and options.type != some(type_name(value))
+        return false
+      end
+  end
+
+  return matches?(options, key)
+end
+
 # Above 18446744073709551615, written in digits with no leading zero.
 def too_big?(digits: List[Int]) -> Bool
   limit = "18446744073709551615".bytes.to_a
@@ -115,34 +151,4 @@ def too_big?(digits: List[Int]) -> Bool
   end
 
   return false
-end
-
-def read_options(words: List[Bytes]) -> Options
-  found = Options()
-  i = 0
-  while i < words.size
-    word = Args.lower(words[i])
-    has_value = i + 1 < words.size
-    if word == "count" and has_value
-      case Args.parse_int(words[i + 1])
-        none -> return found.with(refused: some("ERR value is not an integer or out of range"))
-        some(count) ->
-          if count < 1
-            return found.with(refused: some("ERR syntax error"))
-          end
-
-          found = found.with(count: count)
-      end
-    elsif word == "match" and has_value
-      found = found.with(pattern: some(words[i + 1]))
-    elsif word == "type" and has_value
-      found = found.with(type: some(Args.lower(words[i + 1])))
-    else
-      return found.with(refused: some("ERR syntax error"))
-    end
-
-    i += 2
-  end
-
-  return found
 end

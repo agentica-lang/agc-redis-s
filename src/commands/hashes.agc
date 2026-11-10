@@ -1,7 +1,7 @@
 ## Hash commands: HSET, HMSET, HSETNX, HGET, HMGET, HDEL, HLEN, HEXISTS,
-## HSTRLEN, HGETALL, HKEYS, HVALS, HINCRBY and HINCRBYFLOAT. Checked against
+## HSTRLEN, HGETALL, HKEYS, HVALS, HINCRBY, HINCRBYFLOAT, HRANDFIELD and HSCAN. Checked against
 ## Redis 7.2 t_hash.c (one function per command, genericHgetallCommand for the
-## three listings), object.c (checkType, getLongLongFromObjectOrReply,
+## three listings, hrandfieldCommand and hrandfieldWithCountCommand, hscanCommand), object.c (checkType, getLongLongFromObjectOrReply,
 ## getLongDoubleFromObjectOrReply) and util.c (string2ll, string2ld, ld2string).
 ## A command that reads or writes answers WRONGTYPE for a key of another type,
 ## before it looks at the fields; a missing key is an empty hash.
@@ -9,12 +9,18 @@
 import Args from "args"
 import {Call, Command, Outcome, fail, reply, wrong_arity, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
+import Scan from "scan"
 import LongDouble from "../store/long_double"
+import ScanPages from "../store/scan"
 import Hashes from "../store/hashes"
 import {Held} from "../store/hashes"
 
 NOT_INT = "ERR value is not an integer or out of range"
 NOT_FLOAT = "ERR value is not a valid float"
+# A reply of more items than this would pass the output cap of a client (dock
+# drops it at 8 MiB, and an item takes 5 bytes at least): refused up front, as
+# the only difference from Redis, which would stream it.
+MAX_ITEMS = 1_600_000
 INT_MAX = 9_223_372_036_854_775_807
 INT_MIN = -9_223_372_036_854_775_807 - 1
 
@@ -34,6 +40,8 @@ export def commands() -> List[Command]
     Command(name: "hvals", arity: 2, handler: &hvals),
     Command(name: "hincrby", arity: 4, handler: &hincrby),
     Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat),
+    Command(name: "hrandfield", arity: -2, handler: &hrandfield),
+    Command(name: "hscan", arity: -3, handler: &hscan),
   ]
 end
 
@@ -261,6 +269,122 @@ def add_float(call: Call, fields: Map[Bytes, Bytes], delta: LongDouble.Ext) -> O
           return write(call, stored, Reply.Bulk(shown))
       end
   end
+end
+
+# HRANDFIELD key [count [WITHVALUES]]. The count is read first, then the
+# options, then the key (hrandfieldCommand).
+def hrandfield(call: Call) -> Outcome
+  if call.args.size == 1
+    return random_one(call)
+  end
+
+  case Args.parse_int(call.args[1])
+    none -> return fail(call, NOT_INT)
+    some(count) ->
+      if count == INT_MIN
+        return fail(call, "ERR value is out of range, value must between -9223372036854775807 and 9223372036854775807")
+      end
+
+      if call.args.size > 3 or (call.args.size == 3 and Args.lower(call.args[2]) != "withvalues")
+        return fail(call, "ERR syntax error")
+      end
+
+      if call.args.size == 3 and (count < -INT_MAX / 2 or count > INT_MAX / 2)
+        return fail(call, "ERR value is out of range")
+      end
+
+      return random_many(call, count, call.args.size == 3)
+  end
+end
+
+def random_one(call: Call) -> Outcome
+  case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> return reply(call, Reply.NilBulk)
+    Held.Fields(fields) ->
+      at = Hashes.sample_repeating(fields.size, 1, call.random)[0]
+      return reply(call, Reply.Bulk(fields.keys[at]))
+  end
+end
+
+def random_many(call: Call, count: Int, with_values: Bool) -> Outcome
+  case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> return reply(call, Reply.Array([]))
+    Held.Fields(fields) ->
+      if count == 0
+        return reply(call, Reply.Array([]))
+      end
+
+      # A positive count that covers the hash gives all of it, in order; a
+      # smaller one gives that many different fields, also in order (as the
+      # listpack case of Redis); a negative one (or 1) samples with repeats.
+      positions = Hashes.sample_repeating(fields.size, 1, call.random)
+      if count < 0
+        if count < -MAX_ITEMS
+          return fail(call, "ERR count is too large for the output limit")
+        end
+
+        positions = Hashes.sample_repeating(fields.size, 0 - count, call.random)
+      elsif count >= fields.size
+        positions = (0...fields.size).to_a
+      elsif count > 1
+        positions = Hashes.sample_distinct(fields.size, count, call.random)
+      end
+
+      return reply(call, Reply.Array(pairs_at(fields, positions, with_values)))
+  end
+end
+
+def pairs_at(fields: Map[Bytes, Bytes], positions: List[Int], with_values: Bool) -> List[Reply]
+  names = fields.keys
+  items: List[Reply] = []
+  for at in positions
+    items = items.push(Reply.Bulk(names[at]))
+    if with_values
+      items = items.push(Reply.Bulk(fields.get(names[at], "".bytes)))
+    end
+  end
+
+  return items
+end
+
+# HSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
+# the key, then the options. The pages are ordered by the hash of the field
+# name, as SCAN's are, so a field that stays for the whole scan is in exactly
+# one page. Redis answers a small hash in one page whatever COUNT says; this
+# follows COUNT, which the protocol allows.
+def hscan(call: Call) -> Outcome
+  case Scan.cursor_of(call.args[1])
+    none -> return fail(call, "ERR invalid cursor")
+    some(cursor) ->
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return reply(call, scan_reply(0, []))
+        Held.Fields(fields) -> return scan_fields(call, fields, cursor)
+      end
+  end
+end
+
+def scan_fields(call: Call, fields: Map[Bytes, Bytes], cursor: Int) -> Outcome
+  options = Scan.read_options(call.args.drop(2), false)
+  case options.refused
+    some(text) -> return fail(call, text)
+    none -> nil
+  end
+
+  page = ScanPages.page(fields.keys, cursor, options.count)
+  listed = page.keys.select do |name| Scan.matches?(options, name) end
+  items: List[Reply] = []
+  for name in listed
+    items = items.push(Reply.Bulk(name)).push(Reply.Bulk(fields.get(name, "".bytes)))
+  end
+
+  return reply(call, scan_reply(page.next, items))
+end
+
+def scan_reply(next: Int, items: List[Reply]) -> Reply
+  return Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])
 end
 
 def count_of(found: Bool) -> Int

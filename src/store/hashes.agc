@@ -32,3 +32,42 @@ export def store(keyspace: Keyspace.Keyspace, key: Bytes, fields: Map[Bytes, Byt
 
   return Keyspace.put(keyspace, key, Value.Hash(fields), now_ms)
 end
+
+## `count` positions in 0...size, each picked at random with repeats
+## (HRANDFIELD with a negative count); `random` seeds the draws.
+export def sample_repeating(size: Int, count: Int, random: Int) -> List[Int]
+  seed = random % 2_147_483_648
+  picked: List[Int] = []
+  for _ in 1..count
+    seed = advance(seed)
+    picked = picked.push(below(seed, size))
+  end
+
+  return picked
+end
+
+## `count` different positions of 0...size, in ascending order, every subset
+## equally likely (selection sampling: position i is taken with the chance
+## needed / left). The count is below the size.
+export def sample_distinct(size: Int, count: Int, random: Int) -> List[Int]
+  seed = random % 2_147_483_648
+  picked: List[Int] = []
+  for i in 0...size
+    seed = advance(seed)
+    if below(seed, size - i) < count - picked.size
+      picked = picked.push(i)
+    end
+  end
+
+  return picked
+end
+
+# A linear congruential step; the product stays under 2^62, so no overflow.
+def advance(seed: Int) -> Int
+  return (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+end
+
+# A number in 0...size from a seed (the low bits of the generator are weak).
+def below(seed: Int, size: Int) -> Int
+  return (seed / 16) % size
+end
