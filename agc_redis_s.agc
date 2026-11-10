@@ -1,11 +1,16 @@
 ## The server: parse the options, start the store task, accept clients.
 
-import Accept from "src/server/accept"
+import Dock from "pkg/dock/dock"
 import Config from "src/server/config"
+import Connection from "src/server/connection"
 import {Message} from "src/server/message"
 import StoreTask from "src/server/store_task"
 
 INBOX_SIZE = 4096
+# Phase 0 cap on the replies a client has not read yet. Over it dock drops the
+# client, so a client that never reads cannot make the server grow. Redis has
+# no cap for normal clients by default; this is a stricter choice.
+MAX_PENDING_BYTES = 8_388_608
 
 def main() -> Void
   case Config.parse(System.args())
@@ -15,27 +20,25 @@ def main() -> Void
 end
 
 def start(config: Config.Config) -> Void
-  case TCP.listen(config.bind, config.port)
+  inbox: Channel[Message] = Channel.new(INBOX_SIZE)
+  store = Task.spawn(&StoreTask.run, inbox)
+  options = Dock.Config(port: config.port, host: config.bind, max_outbox_bytes: MAX_PENDING_BYTES)
+  hooked = Dock.on_close(options) do |conn| Connection.gone(inbox, conn.id) end
+  started = Dock.start(hooked) do |conn| Connection.serve(conn, inbox) end
+  case started
     error(text) -> fail(text)
-    ok(listener) ->
-      inbox: Channel[Message] = Channel.new(INBOX_SIZE)
-      downs: Channel[Int] = Channel.new(INBOX_SIZE)
-      store = Task.spawn(&StoreTask.run, inbox)
-      Task.monitor(store, downs) do |_| stop_inbox(inbox) end
+    ok(server) ->
+      # Without the store task no command can run: dock stops the server, and
+      # `wait` returns.
+      Dock.watch(server, store)
       # Tests start the server on port 0 and read the real port from this line.
-      puts("ready #{config.bind}:#{TCP.local_port(listener)}")
+      puts("ready #{config.bind}:#{server.port}")
       IO.flush()
-      Accept.accept_loop(listener, inbox, downs)
-      # Without the store task no command can run: stop, do not hang the clients.
-      fail("the store task stopped")
+      case Dock.wait(server)
+        error(text) -> fail(text)
+        ok(_) -> fail("the store task stopped")
+      end
   end
-end
-
-# Closing the inbox is how the rest of the server learns that the store task is
-# gone: sends to it end, and the accept loop stops.
-def stop_inbox(inbox: Channel[Message]) -> Int
-  inbox.close
-  return 0
 end
 
 def fail(text: String) -> Void
