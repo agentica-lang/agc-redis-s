@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned Agentica release
+        uses: agentica-lang/setup-agentica@v1
+        with:
+          version: 0.28.0
+          sha256: b77e32bb4a737d15960ba1594bbafc25e7cd323a70f8d56df4ea3ba946189669 # linux-x86_64
+
+      - name: Check, format and test
+        run: |
+          agentica --version
+          make check
+          make fmt-check
+          make test
