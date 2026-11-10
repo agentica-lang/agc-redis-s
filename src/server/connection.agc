@@ -3,7 +3,7 @@
 
 import {Read} from "../resp/reader"
 import Reader from "../resp/reader"
-import {Message} from "message"
+import {OUTBOX_SLOTS, Message} from "message"
 import Writer from "writer"
 
 # A receive timeout closes the socket and there is no wait-forever form: a year.
@@ -26,7 +26,7 @@ end
 
 ## Serves the client until it leaves; runs as the client's own task.
 export def serve(link: Link) -> Void
-  outbox: Channel[Bytes] = Channel.new(1024)
+  outbox: Channel[Bytes] = Channel.new(OUTBOX_SLOTS)
   pending: ATS[Int, Int] = ATS.new()
   case link.inbox.send(Message.Open(link.id, outbox, pending), INBOX_SEND_MS)
     error(_) ->

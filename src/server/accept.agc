@@ -10,6 +10,8 @@ ACCEPT_MS = 1000
 ## when it ended on its own. For a crashed one the loop closes the socket
 ## (a crashed task never did) and tells the store task. The sockets stay owned
 ## here: `Task.spawn_owning` would also close the inbox with the connection.
+## A `downs` notice is lost when more than 4,096 tasks end within one reap
+## cycle; the socket of a crashed one then stays open until the server exits.
 export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Channel[Int]) -> Void
   next_id = 1
   sockets: Map[Int, Socket] = {}

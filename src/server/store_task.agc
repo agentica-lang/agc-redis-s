@@ -5,15 +5,11 @@ import {Call, Command, Effect} from "../commands/command"
 import Dispatch from "../commands/dispatch"
 import Table from "../commands/table"
 import Clock from "clock"
-import {Message} from "message"
+import {MAX_PENDING_BYTES, REPLY_OVERHEAD, Message} from "message"
 import Writer from "../resp/writer"
 import {Keyspace} from "../store/keyspace"
 
 POLL_MS = 1000
-# Phase 0 cap on the replies a client has not read yet. Over it the client is
-# dropped, so a client that never reads cannot make the server grow. Redis has
-# no cap for normal clients by default; this is a stricter choice.
-MAX_PENDING_BYTES = 8_388_608
 
 struct Client
   outbox: Channel[Bytes]
@@ -88,8 +84,9 @@ def send(state: State, id: Int, bytes: Bytes) -> State
   case state.clients.get(id)
     none -> return state
     some(client) ->
-      total = client.pending.add(0, bytes.size)
-      backlog = total > bytes.size
+      cost = bytes.size + REPLY_OVERHEAD
+      total = client.pending.add(0, cost)
+      backlog = total > cost
       if backlog and total > MAX_PENDING_BYTES
         return drop(state, id)
       end

@@ -1,9 +1,12 @@
 ## The writer task of a connection: it sends what the store task puts in the
 ## outbox, in order. It ends when the outbox is closed and empty.
 
+import {REPLY_OVERHEAD} from "message"
+
 # `TCP.send_bytes` takes at most 1 MiB.
 MAX_SEND = 1_048_576
 POLL_MS = 1000
+BATCH = 256
 # A client that takes nothing for this long is gone; its socket is closed.
 WRITE_TIMEOUT_MS = 5000
 
@@ -16,9 +19,10 @@ end
 export def run(pipe: Pipe) -> Void
   while true
     case pipe.outbox.recv(POLL_MS)
-      ok(bytes) ->
-        sent = send_all(pipe, bytes)
-        _ = pipe.pending.add(0, -bytes.size)
+      ok(first) ->
+        parts = more_replies([first], pipe)
+        sent = send_all(pipe, Bytes.concat(parts))
+        _ = pipe.pending.add(0, -parts.reduce(0) do |sum, part| sum + part.size + REPLY_OVERHEAD end)
         if not sent
           break
         end
@@ -32,6 +36,20 @@ export def run(pipe: Pipe) -> Void
 
   # Whatever ended the loop, the client is done: this wakes the reader too.
   TCP.close(pipe.socket)
+end
+
+# Replies that are already waiting go out in one send: a pipelined client costs
+# one system call per batch, not one per reply.
+def more_replies(parts: List[Bytes], pipe: Pipe) -> List[Bytes]
+  batch = parts
+  while batch.size < BATCH
+    case pipe.outbox.recv(0)
+      ok(more) -> batch = batch.push(more)
+      error(_) -> return batch
+    end
+  end
+
+  return batch
 end
 
 # A failed send means the client is gone: closing the outbox makes the store
