@@ -1,6 +1,7 @@
 ## One client connection: read bytes, cut them into requests, hand them to the
 ## store task. The writer task sends the replies.
 
+import Session from "../commands/session"
 import {Read} from "../resp/reader"
 import Reader from "../resp/reader"
 import {OUTBOX_SLOTS, Message} from "message"
@@ -87,7 +88,7 @@ def drain(link: Link, buffer: Bytes) -> Drained
   while true
     case Reader.read_request(buffer, pos)
       Read.Incomplete -> return Drained.More(buffer.drop(pos))
-      Read.Invalid(text) -> return Drained.Broken("-ERR #{text}\r\n".bytes)
+      Read.Invalid(text) -> return Drained.Broken(Session.protocol_error_reply(text))
       Read.Skip(next) -> pos = next
       Read.Request(argv, next) ->
         # A request that is lost would shift every later reply: end instead.

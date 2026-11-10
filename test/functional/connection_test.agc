@@ -6,7 +6,7 @@ def words(list: List[String]) -> Bytes
 end
 
 # Pipelined requests in one buffer: an array, an inline line, a lowercase name,
-# a binary-safe ECHO, then QUIT; what follows QUIT is never run.
+# a binary-safe ECHO, an ECHO without argument, then QUIT; what follows QUIT is never run.
 def test_pipeline_and_quit() -> Result[Void]
   data = Bytes.from_list([0, 13, 10, 255]).unwrap!
   sent = Bytes.concat([

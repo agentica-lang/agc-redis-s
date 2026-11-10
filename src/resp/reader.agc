@@ -4,6 +4,7 @@
 ## (`redis-cli`, telnet).
 
 MAX_BULK = 536_870_912
+# A deliberate memory guard, stricter than Redis 7 (which allows INT_MAX items).
 MAX_ARRAY = 1_048_576
 LF = 10
 CR = 13

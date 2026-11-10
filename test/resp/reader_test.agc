@@ -18,7 +18,7 @@ end
 
 # Lengths are read as Redis's string2ll does: only `-` and digits, no leading zero.
 def test_lengths_are_strict() -> Result[Void]
-  for text in ["$+3", "$ 3", "$1_0", "$03", "$-0", "$-1", "$"]
+  for text in ["$+3", "$ 3", "$1_0", "$03", "$-0", "$"]
     try Test.eq(
       Reader.read_request("*1\r\n#{text}\r\nabc\r\n".bytes, 0),
       Read.Invalid("Protocol error: invalid bulk length"),

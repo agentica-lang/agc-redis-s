@@ -1,11 +1,11 @@
 ## Helpers shared by the tests.
 
-import {Call, Command, Effect, Outcome} from "../src/commands/command"
+import {Call, Command, Outcome} from "../src/commands/command"
 import Dispatch from "../src/commands/dispatch"
 import {Read} from "../src/resp/reader"
 import Reader from "../src/resp/reader"
+import Session from "../src/commands/session"
 import Table from "../src/commands/table"
-import Writer from "../src/resp/writer"
 import {Keyspace} from "../src/store/keyspace"
 
 ## What the client gets for the bytes it sent, and the keyspace after them.
@@ -21,9 +21,10 @@ export def request(words: List[Bytes]) -> Bytes
   return Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
 
-## The whole path without a socket: reader, dispatch, store, writer. `closed`
-## is set by a `Close` effect or a protocol error; what follows it is ignored.
-export def exchange(keyspace: Keyspace, bytes: Bytes) -> Exchange
+## The whole path without a socket: reader, then the same `Session` calls as
+## the store task. `closed` is set by a `Close` effect or a protocol error;
+## what follows it is ignored.
+export def exchange(keyspace: Keyspace, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
   state = keyspace
   replies: List[Bytes] = []
@@ -33,13 +34,13 @@ export def exchange(keyspace: Keyspace, bytes: Bytes) -> Exchange
       Read.Incomplete -> return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: false)
       Read.Skip(next) -> pos = next
       Read.Invalid(text) ->
-        replies = replies.push("-ERR #{text}\r\n".bytes)
+        replies = replies.push(Session.protocol_error_reply(text))
         return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: true)
       Read.Request(argv, next) ->
-        outcome = Dispatch.execute(table, argv[0], Call(keyspace: state, args: argv.drop(1), client_id: 1))
-        state = outcome.keyspace
-        replies = replies.concat(outcome.replies.map do |r| Writer.encode(r) end)
-        if outcome.effects.include?(Effect.Close)
+        done = Session.execute_request(table, state, argv, now_ms, 1)
+        state = done.keyspace
+        replies = replies.push(done.reply)
+        if done.close
           return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: true)
         end
 

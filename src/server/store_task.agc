@@ -1,12 +1,11 @@
 ## The task that owns the data. It takes one message at a time, so a command
 ## never sees a half-done one, as with the single thread of Redis.
 
-import {Call, Command, Effect} from "../commands/command"
-import Dispatch from "../commands/dispatch"
+import {Command} from "../commands/command"
+import Session from "../commands/session"
 import Table from "../commands/table"
 import Clock from "clock"
 import {MAX_PENDING_BYTES, REPLY_OVERHEAD, Message} from "message"
-import Writer from "../resp/writer"
 import {Keyspace} from "../store/keyspace"
 
 POLL_MS = 1000
@@ -57,15 +56,9 @@ def exec(state: State, id: Int, argv: List[Bytes]) -> State
     return state
   end
 
-  call = Call(keyspace: state.keyspace, args: argv.drop(1), now_ms: Clock.now_ms(), client_id: id)
-  outcome = Dispatch.execute(state.table, argv[0], call)
-  sent = send(
-    state.with(keyspace: outcome.keyspace),
-    id,
-    Bytes.concat(outcome.replies.map do |r| Writer.encode(r) end),
-  )
-
-  if outcome.effects.include?(Effect.Close)
+  done = Session.execute_request(state.table, state.keyspace, argv, Clock.now_ms(), id)
+  sent = send(state.with(keyspace: done.keyspace), id, done.reply)
+  if done.close
     return drop(sent, id)
   end
 

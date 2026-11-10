@@ -22,8 +22,7 @@ src/
   server/            I/O SHELL: sockets, tasks, the clock. config, accept,
                      connection (reader task), writer (writer task),
                      store_task (owns the data), message, clock
-test/functional/     one `<domain>_test.agc` per domain (connection,
-                     strings, keys, hashes, lists, sets, zsets, ...)
+test/functional/     one `<domain>_test.agc` per domain
 test/                unit tests of pure logic, the same path as the source;
                      support.agc: `exchange` (request bytes -> reader ->
                      dispatch -> store -> writer -> reply bytes), `request`
@@ -57,7 +56,9 @@ tools/               check_purity.py and its tests (Python, standard library)
   - Functional tests by domain, in Agentica, in process, no socket:
     `test/functional/<domain>_test.agc` feeds request bytes to `exchange` and
     compares the reply bytes and the keyspace. Plain paths, error texts and
-    arity are tested here.
+    arity are tested here. The helper calls `commands/session.agc`, the same
+    code as the store task; only its read loop mirrors the server's, and the
+    smoke test is the check of the real loop.
   - Unit tests only where a pure function has real logic (RESP reader and
     writer, glob, ranges, score formatting).
   - Property tests with `prop` (agentica-lang/packages), from the strings
@@ -78,7 +79,7 @@ tools/               check_purity.py and its tests (Python, standard library)
 ## Commands
 
 - `make check` (purity, `agentica check`, lint), `make fmt-check`,
-  `make test` (unit tests of `test/` and `tools/`), `make integration`
+  `make test` (the tests of `test/` and `tools/`), `make integration`
   (the smoke test). `agentica fmt src test`
   fixes formatting.
 
