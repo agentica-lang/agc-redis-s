@@ -9,4 +9,7 @@ export enum Reply
   NilBulk
   Array(List[Reply])
   NilArray
+  ## Bytes already in RESP form, written as they are: a command that builds a
+  ## long reply in one pass (LRANGE) skips one `Reply` and one encode per item.
+  Raw(Bytes)
 end

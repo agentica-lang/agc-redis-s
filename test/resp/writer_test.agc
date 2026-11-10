@@ -15,6 +15,16 @@ def test_bulk_is_binary_safe() -> Result[Void]
   return Test.eq(Writer.encode(Reply.Bulk("".bytes)), "$0\r\n\r\n".bytes)
 end
 
+# The sizes below 1024 take a cached header; the one at and over it is built.
+def test_bulk_headers_around_the_cached_sizes() -> Result[Void]
+  for size in [1, 9, 10, 1023, 1024, 1025]
+    data = Bytes.from_list((0...size).to_a.map do |_| 97 end).unwrap!
+    try Test.eq(Writer.encode(Reply.Bulk(data)), "$#{size}\r\n".bytes + data + "\r\n".bytes)
+  end
+
+  return Test.eq(Writer.encode(Reply.Raw("*0\r\n".bytes)), "*0\r\n".bytes)
+end
+
 def test_nested_array() -> Result[Void]
   reply = Reply.Array([Reply.Integer(1), Reply.Array([Reply.Bulk("a".bytes)])])
   return Test.eq(Writer.encode(reply), "*2\r\n:1\r\n*1\r\n$1\r\na\r\n".bytes)

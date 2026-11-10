@@ -170,6 +170,9 @@ def test_lmpop() -> Result[Void]
     ["LMPOP", "1", "a"],
   ])
 
+  # Only numkeys keys are looked at: the word after them is not a key.
+  try Test.eq(ask([["RPUSH", "LEFT", "x"], ["LMPOP", "1", "a", "LEFT"]]), ":1\r\n*-1\r\n")
+
   bad = [NUMKEYS, NUMKEYS, NUMKEYS, SYNTAX, SYNTAX, SYNTAX, COUNT, COUNT, SYNTAX, SYNTAX, SYNTAX]
   return Test.eq(errors, bad.concat(["-ERR wrong number of arguments for 'lmpop' command\r\n"]).join(""))
 end

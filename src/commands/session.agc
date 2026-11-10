@@ -4,6 +4,7 @@
 
 import {Call, Change, Command, Effect} from "command"
 import Dispatch from "dispatch"
+import {Reply} from "../resp/reply"
 import Writer from "../resp/writer"
 import {Session} from "../session/session"
 import {Databases, space_at, sweep, with_space} from "../store/databases"
@@ -104,8 +105,16 @@ def run_for(
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
 
-  reply = Bytes.concat(outcome.replies.map do |r| Writer.encode(r) end)
-  return Ran(store: next_store, reply: reply, close: outcome.effects.include?(Effect.Close))
+  return Ran(store: next_store, reply: encoded(outcome.replies), close: outcome.effects.include?(Effect.Close))
+end
+
+# Almost every command makes one reply: it is not copied into a concat of one.
+def encoded(replies: List[Reply]) -> Bytes
+  if replies.size == 1
+    return Writer.encode(replies[0])
+  end
+
+  return Bytes.concat(replies.map do |r| Writer.encode(r) end)
 end
 
 # A linear congruential step; a request uses two of them, so `Call.random` has 62
