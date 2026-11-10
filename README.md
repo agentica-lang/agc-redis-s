@@ -36,7 +36,7 @@ Read `AGENTS.md` for the layout and how to add a command.
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Layout, CI, PING and ECHO | done |
-| 1 | RESP2 reader and writer | in progress |
+| 1 | RESP2 reader and writer | done |
 | 2 | Connection and server commands | done |
 | 3 | Strings | done |
 | 4 | Keys and expiry | done |
