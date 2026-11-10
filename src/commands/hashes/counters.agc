@@ -11,9 +11,6 @@ import LongDouble from "../../store/long_double"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-INT_MAX = 9_223_372_036_854_775_807
-INT_MIN = -9_223_372_036_854_775_807 - 1
-
 export def commands() -> List[Command]
   return [
     Command(name: "hincrby", arity: 4, handler: &hincrby),
@@ -45,7 +42,10 @@ def add_int(call: Call, fields: Map[Bytes, Bytes], delta: Int) -> Outcome
     end
   end
 
-  if (delta < 0 and old < 0 and delta < INT_MIN - old) or (delta > 0 and old > 0 and delta > INT_MAX - old)
+  if (
+    (delta < 0 and old < 0 and delta < Integer.INT_MIN - old) or
+    (delta > 0 and old > 0 and delta > Integer.INT_MAX - old)
+  )
     return fail(call, Errors.OVERFLOW)
   end
 

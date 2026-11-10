@@ -10,8 +10,6 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
-INT_MIN = -9_223_372_036_854_775_807 - 1
-
 export def commands() -> List[Command]
   return [
     Command(name: "lset", arity: 4, handler: &lset),
@@ -130,11 +128,11 @@ end
 
 def removed(call: Call, elements: List[Bytes], count: Int) -> Outcome
   limit = count
-  if count < 0 and count != INT_MIN
+  if count < 0 and count != Integer.INT_MIN
     limit = 0 - count
   end
 
-  if count == INT_MIN
+  if count == Integer.INT_MIN
     limit = 0
   end
 

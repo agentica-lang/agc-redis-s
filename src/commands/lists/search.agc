@@ -10,7 +10,6 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
-INT_MAX = 9_223_372_036_854_775_807
 NO_COUNT = -1
 
 # `count` is -1 when COUNT was not given.
@@ -79,7 +78,7 @@ def rank_of(text: Bytes) -> Result[Int]
   case Integer.parse(text)
     none -> return error(Errors.NOT_INT)
     some(rank) ->
-      if rank < 0 - INT_MAX
+      if rank < 0 - Integer.INT_MAX
         return error(Errors.LONG_RANGE)
       end
 

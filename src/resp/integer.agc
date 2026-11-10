@@ -1,7 +1,8 @@
 ## The integers of the wire and of the arguments: one reading, Redis's.
 
 MIN_DIV_10 = -922_337_203_685_477_580
-INT_MIN = -9_223_372_036_854_775_807 - 1
+export INT_MIN = -9_223_372_036_854_775_807 - 1
+export INT_MAX = 9_223_372_036_854_775_807
 
 ## An integer as Redis's `string2ll` reads it: digits only, one optional `-`, no
 ## `+`, no space, no leading zero (`0` alone is fine, `-0` is not), and it must

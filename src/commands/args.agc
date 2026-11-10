@@ -3,9 +3,6 @@
 import Errors from "errors"
 import Integer from "../resp/integer"
 
-INT_MIN = -9_223_372_036_854_775_807 - 1
-INT_MAX = 9_223_372_036_854_775_807
-
 ## The word as lowercase text, for matching option names without case. Latin-1
 ## maps every byte to a character, so this never fails.
 export def lower(word: Bytes) -> String
@@ -49,7 +46,7 @@ export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, co
   case Integer.parse(text)
     none -> return error(Errors.NOT_INT)
     some(value) ->
-      if value <= 0 or (seconds and value > INT_MAX / 1000)
+      if value <= 0 or (seconds and value > Integer.INT_MAX / 1000)
         return bad_expire(command)
       end
 
@@ -59,7 +56,7 @@ export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, co
       end
 
       # The sum is compared first: an Int that overflows halts.
-      if relative and ms > INT_MAX - now_ms
+      if relative and ms > Integer.INT_MAX - now_ms
         return bad_expire(command)
       end
 
@@ -80,14 +77,14 @@ export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String
     some(value) ->
       ms = value
       if seconds
-        if value > INT_MAX / 1000 or value < INT_MIN / 1000
+        if value > Integer.INT_MAX / 1000 or value < Integer.INT_MIN / 1000
           return bad_expire(command)
         end
 
         ms = value * 1000
       end
 
-      if ms > INT_MAX - base_ms
+      if ms > Integer.INT_MAX - base_ms
         return bad_expire(command)
       end
 

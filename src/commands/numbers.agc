@@ -14,9 +14,6 @@ import LongDouble from "../store/long_double"
 import Strings from "../store/strings"
 import {Value, joined_text} from "../store/value"
 
-INT_MAX = 9_223_372_036_854_775_807
-INT_MIN = -9_223_372_036_854_775_807 - 1
-
 export def commands() -> List[Command]
   return [
     Command(name: "incr", arity: 2, handler: &incr),
@@ -49,7 +46,7 @@ def decrby(call: Call) -> Outcome
   case Integer.parse(call.args[1])
     none -> return fail(call, Errors.NOT_INT)
     some(delta) ->
-      if delta == INT_MIN
+      if delta == Integer.INT_MIN
         return fail(call, "ERR decrement would overflow")
       end
 
@@ -76,7 +73,10 @@ def add_to(call: Call, delta: Int) -> Outcome
   case Integer.parse(held_text(call, key))
     none -> return fail(call, Errors.NOT_INT)
     some(old) ->
-      if (delta < 0 and old < 0 and delta < INT_MIN - old) or (delta > 0 and old > 0 and delta > INT_MAX - old)
+      if (
+        (delta < 0 and old < 0 and delta < Integer.INT_MIN - old) or
+        (delta > 0 and old > 0 and delta > Integer.INT_MAX - old)
+      )
         return fail(call, Errors.OVERFLOW)
       end
 
