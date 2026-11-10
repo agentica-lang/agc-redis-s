@@ -17,7 +17,6 @@ import ListEdit from "lists/edit"
 import ListPop from "lists/pop"
 import ListPush from "lists/push"
 import ListRead from "lists/read"
-import ListSearch from "lists/search"
 import Numbers from "numbers"
 import Scan from "scan"
 import Server from "server"
@@ -42,7 +41,6 @@ export def build() -> Map[String, Command]
       .concat(ListRead.commands())
       .concat(ListPop.commands())
       .concat(ListEdit.commands())
-      .concat(ListSearch.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end

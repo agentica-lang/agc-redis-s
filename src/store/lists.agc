@@ -102,26 +102,6 @@ export def set(seq: Seq, index: Int, element: Bytes) -> Seq
   return Seq(items: seq.items.put(seq.head + index, element), head: seq.head)
 end
 
-## All the elements in order: O(n), for the commands that rebuild the list
-## (LINSERT, LREM), as they do in Redis.
-export def to_list(seq: Seq) -> List[Bytes]
-  picked: List[Bytes] = []
-  for offset in 0...length(seq)
-    picked = picked.push(seq.items.get(seq.head + offset, "".bytes))
-  end
-
-  return picked
-end
-
-export def from_list(elements: List[Bytes]) -> Seq
-  items: Map[Int, Bytes] = {}
-  for index in 0...elements.size
-    items = items.put(index, elements[index])
-  end
-
-  return Seq(items: items, head: 0)
-end
-
 ## The range `start` to `stop` of a list of `size` elements as Redis reads it
 ## (addListRangeReply, ltrimCommand): a negative index counts from the tail, a
 ## start before the head is the head, a stop past the tail is the tail. None

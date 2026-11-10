@@ -1,6 +1,5 @@
-## LSET, LTRIM, LINSERT and LREM (t_list.c). LSET is one `Map` step; LTRIM one
-## per element removed; LINSERT and LREM walk and rebuild the list, O(n), as
-## Redis does. A list left empty deletes its key.
+## LSET and LTRIM (t_list.c). LSET is one `Map` step; LTRIM one per element
+## removed. A list left empty deletes its key.
 
 import Args from "../args"
 import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
@@ -9,15 +8,9 @@ import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
 NOT_INT = "ERR value is not an integer or out of range"
-INT_MIN = -9_223_372_036_854_775_807 - 1
 
 export def commands() -> List[Command]
-  return [
-    Command(name: "lset", arity: 4, handler: &lset),
-    Command(name: "ltrim", arity: 4, handler: &ltrim),
-    Command(name: "linsert", arity: 5, handler: &linsert),
-    Command(name: "lrem", arity: 4, handler: &lrem),
-  ]
+  return [Command(name: "lset", arity: 4, handler: &lset), Command(name: "ltrim", arity: 4, handler: &ltrim)]
 end
 
 # The key is looked up first, then the type, then the index is read.
@@ -73,89 +66,4 @@ def trimmed(call: Call, seq: Seq, start: Int, stop: Int) -> Outcome
   end
 
   return write(call, Lists.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Simple("OK"))
-end
-
-# AFTER or BEFORE is checked before the key; the pivot is the first element
-# from the head that equals the given one, and none answers -1.
-def linsert(call: Call) -> Outcome
-  where = Args.lower(call.args[1])
-  if where != "after" and where != "before"
-    return fail(call, "ERR syntax error")
-  end
-
-  case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Foreign -> return wrong_type(call)
-    Held.Items(seq) -> return inserted(call, Lists.to_list(seq), where == "after")
-  end
-end
-
-def inserted(call: Call, elements: List[Bytes], after: Bool) -> Outcome
-  at = -1
-  for index in 0...elements.size
-    if at < 0 and elements[index] == call.args[2]
-      at = index
-    end
-  end
-
-  if at < 0
-    return reply(call, Reply.Integer(-1))
-  end
-
-  cut = at
-  if after
-    cut = at + 1
-  end
-
-  grown = elements.take(cut).push(call.args[3]).concat(elements.drop(cut))
-  stored = Lists.store(call.keyspace, call.args[0], Lists.from_list(grown), call.now_ms)
-  return write(call, stored, Reply.Integer(grown.size))
-end
-
-# The count is read before the key. A positive count removes from the head, a
-# negative one from the tail, 0 removes all. Redis negates the count, so the
-# smallest Int wraps and removes all from the tail.
-def lrem(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
-    some(count) ->
-      case Lists.held(call.keyspace, call.args[0], call.now_ms)
-        Held.Missing -> return reply(call, Reply.Integer(0))
-        Held.Foreign -> return wrong_type(call)
-        Held.Items(seq) -> return removed(call, Lists.to_list(seq), count)
-      end
-  end
-end
-
-def removed(call: Call, elements: List[Bytes], count: Int) -> Outcome
-  limit = count
-  if count < 0 and count != INT_MIN
-    limit = 0 - count
-  end
-
-  if count == INT_MIN
-    limit = 0
-  end
-
-  order = elements
-  if count < 0
-    order = elements.reverse
-  end
-
-  gone = 0
-  kept: List[Bytes] = []
-  for element in order
-    if element == call.args[2] and (limit == 0 or gone < limit)
-      gone += 1
-    else
-      kept = kept.push(element)
-    end
-  end
-
-  if count < 0
-    kept = kept.reverse
-  end
-
-  stored = Lists.store(call.keyspace, call.args[0], Lists.from_list(kept), call.now_ms)
-  return write(call, stored, Reply.Integer(gone))
 end
