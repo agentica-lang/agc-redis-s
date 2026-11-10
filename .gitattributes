@@ -1,0 +1,3 @@
+*.agc text eol=lf linguist-language=Ruby
+*.py text eol=lf
+*.md text eol=lf
