@@ -91,10 +91,10 @@ end
 # commands and not subcommands, and COMMAND alone lists the rows.
 def test_command() -> Result[Void]
   result = talk([["COMMAND", "DOCS"], ["COMMAND", "COUNT"], ["COMMAND", "COUNT", "x"]])
-  try Test.eq(result.reply, "*0\r\n:85\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
+  try Test.eq(result.reply, "*0\r\n:88\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
   listed = talk([["COMMAND"]]).reply
   quit_entry = "*10\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n*0\r\n*0\r\n*0\r\n*0\r\n"
-  try Test.assert(listed.take(5) == "*85\r\n".bytes, "one entry per command")
+  try Test.assert(listed.take(5) == "*88\r\n".bytes, "one entry per command")
   return Test.assert(listed.size >= quit_entry.bytesize * 24, "ten items each")
 end
 

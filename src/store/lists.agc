@@ -21,6 +21,12 @@ export enum Held
   Foreign
 end
 
+## An end of a list, as LMOVE and LMPOP name it.
+export enum End
+  Head
+  Tail
+end
+
 ## An inclusive range of indexes, both inside the list.
 export struct Span
   first: Int
@@ -73,6 +79,33 @@ end
 ## The list with `element` after its last one (RPUSH of one element).
 export def push_back(seq: Seq, element: Bytes) -> Seq
   return Seq(items: seq.items.put(seq.head + length(seq), element), head: seq.head)
+end
+
+## The list with `element` at `side`.
+export def push(seq: Seq, element: Bytes, side: End) -> Seq
+  case side
+    End.Head -> return push_front(seq, element)
+    End.Tail -> return push_back(seq, element)
+  end
+end
+
+## The element at `end` of a non-empty list.
+export def edge(seq: Seq, side: End) -> Bytes
+  index = 0
+  case side
+    End.Head -> index = 0
+    End.Tail -> index = length(seq) - 1
+  end
+
+  return get(seq, index).unwrap_or("".bytes)
+end
+
+## The list without its `count` elements at `side` (at most the length).
+export def drop(seq: Seq, side: End, count: Int) -> Seq
+  case side
+    End.Head -> return drop_front(seq, count)
+    End.Tail -> return drop_back(seq, count)
+  end
 end
 
 ## The list without its first `count` elements (the count is at most the

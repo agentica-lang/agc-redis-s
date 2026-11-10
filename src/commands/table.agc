@@ -14,6 +14,7 @@ import HashRandom from "hashes/random"
 import HashScan from "hashes/scan"
 import Keys from "keys"
 import ListEdit from "lists/edit"
+import ListMove from "lists/move"
 import ListPop from "lists/pop"
 import ListPush from "lists/push"
 import ListRead from "lists/read"
@@ -43,6 +44,7 @@ export def build() -> Map[String, Command]
       .concat(ListPop.commands())
       .concat(ListEdit.commands())
       .concat(ListSearch.commands())
+      .concat(ListMove.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
