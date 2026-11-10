@@ -39,6 +39,9 @@ export struct Call
   args: List[Bytes]
   name: String = ""
   now_ms: Int = 0
+  ## A number that changes with every request, for the commands that pick at
+  ## random (`RANDOMKEY`); the handlers stay pure.
+  random: Int = 0
   client_id: Int = 0
   ## The connected clients, this one included.
   clients: Int = 0

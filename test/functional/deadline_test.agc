@@ -319,43 +319,84 @@ def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   end
 end
 
-# The nine operations as the requests they make: the clock moves by the
-# second number first, and the key is one of three.
+# The thirteen operations as the requests they make (the tenth, a sweep, makes
+# none): the clock moves by the second number first, and the key is one of three.
+# PEXPIRE takes -2 to 8 ms, so a time that is now or past deletes the key.
 def argv_of(op: List[Int]) -> List[Bytes]
   xs = op.concat([0, 0, 0, 0])
   key = "k#{xs[1] % 3}".bytes
   ms = "#{xs[2] % 9 + 1}".bytes
+  moved = "#{xs[2] % 11 - 2}".bytes
   value = to_bytes(op.drop(4))
-  return case xs[0] % 10
+  return case xs[0] % 13
     0 -> ["SET".bytes, key, value]
     1 -> ["SET".bytes, key, value, "PX".bytes, ms]
-    2 -> ["PEXPIRE".bytes, key, ms]
+    2 -> ["PEXPIRE".bytes, key, moved]
     3 -> ["PERSIST".bytes, key]
     4 -> ["GET".bytes, key]
     5 -> ["PTTL".bytes, key]
     6 -> ["EXISTS".bytes, key]
     7 -> ["APPEND".bytes, key, value]
+    10 -> ["PEXPIRE".bytes, key, moved, option_of(xs[3])]
+    11 -> ["DBSIZE".bytes]
+    12 -> ["INFO".bytes, "keyspace".bytes]
     _ -> ["DEL".bytes, key]
   end
+end
+
+def option_of(n: Int) -> Bytes
+  return ["NX".bytes, "XX".bytes, "GT".bytes, "LT".bytes][n % 4]
+end
+
+# Whether NX, XX, GT or LT lets a key with the deadline `current` take `when`;
+# a key with none counts as an infinite one.
+def allowed?(option: Int, current: Optional[Int], when: Int) -> Bool
+  case current
+    none -> return option % 4 == 0 or option % 4 == 3
+    some(due) -> return case option % 4
+        0 -> false
+        1 -> true
+        2 -> when > due
+        _ -> when < due
+      end
+  end
+end
+
+def keyspace_text(state: Map[Int, Entry]) -> Bytes
+  if state.empty?
+    return bulk_text("# Keyspace\r\n")
+  end
+
+  expiring = state.values.select do |entry| entry.due.some? end
+  return bulk_text("# Keyspace\r\ndb0:keys=#{state.size},expires=#{expiring.size},avg_ttl=0\r\n")
+end
+
+def bulk_text(text: String) -> Bytes
+  return "$#{text.size}\r\n#{text}\r\n".bytes
 end
 
 def model_step(model: Model, op: List[Int], now: Int) -> Model
   xs = op.concat([0, 0, 0, 0])
   key = xs[1] % 3
   ms = xs[2] % 9 + 1
+  moved = xs[2] % 11 - 2
   value = op.drop(4)
   old = live(model.state, key, now)
   held = old.unwrap_or(Entry(value: [], due: none))
   state = model.state
   answer = "+OK\r\n".bytes
-  case xs[0] % 10
+  case xs[0] % 13
     0 -> state = state.put(key, Entry(value: value, due: none))
     1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
     2 ->
       answer = whole(0)
       if old.some?
-        state = state.put(key, held.with(due: some(now + ms)))
         answer = whole(1)
+        if now + moved <= now
+          state = state.delete(key)
+        else
+          state = state.put(key, held.with(due: some(now + moved)))
+        end
       end
 
     3 ->
@@ -385,12 +426,41 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
     7 ->
       state = state.put(key, held.with(value: held.value.concat(value)))
       answer = whole(held.value.size + value.size)
+    9 ->
+      state = swept(state, now)
+      return Model(state: state, replies: model.replies)
+    10 ->
+      answer = whole(0)
+      if old.some? and allowed?(xs[3], held.due, now + moved)
+        answer = whole(1)
+        if now + moved <= now
+          state = state.delete(key)
+        else
+          state = state.put(key, held.with(due: some(now + moved)))
+        end
+      end
+
+    11 -> answer = whole(state.size)
+    12 -> answer = keyspace_text(state)
     _ ->
       state = state.delete(key)
       answer = whole(present(old))
   end
 
   return Model(state: state, replies: model.replies.push(answer))
+end
+
+# What a sweep at `now` leaves: the keys that are not past their deadline.
+def swept(state: Map[Int, Entry], now: Int) -> Map[Int, Entry]
+  left = state
+  for key in state.keys
+    due = state.get(key).unwrap_or(Entry(value: [], due: none)).due
+    if due.some? and now > due.unwrap_or(0)
+      left = left.delete(key)
+    end
+  end
+
+  return left
 end
 
 # The clock of each operation: it moves by 0 to 4 ms, so keys with a deadline
@@ -406,14 +476,14 @@ def clocks(ops: List[List[Int]]) -> List[Int]
   return times
 end
 
-# The server run with the active expiry between operations: it must not change
-# an answer.
+# The server run with the sweep operations in place: an answer depends on one
+# only through DBSIZE and INFO, which count the keys not swept yet.
 def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: List[Int]) -> Bytes
   started = Requests.start(fresh())
   store = Requests.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
-    if ops[i].concat([0])[0] % 10 == 9
+    if ops[i].concat([0])[0] % 13 == 9
       store = Requests.expire_keys(store, times[i])
     else
       done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
@@ -425,19 +495,20 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   return Bytes.concat(replies)
 end
 
-# SET, SET PX, PEXPIRE, PERSIST, GET, PTTL, EXISTS, APPEND and DEL against a Map
-# of values and deadlines, with a clock that moves and a sweep (the tenth kind)
-# that must change no answer. 300 runs: the step limit is between 800 and 1000 runs.
+# SET, SET PX, PEXPIRE (also with NX, XX, GT, LT and a time that is now or
+# past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, DBSIZE and INFO keyspace against
+# a Map of values and deadlines, with a clock that moves and a sweep that the
+# model repeats: the counts of DBSIZE and `expires` show an index that drifted,
+# and a key that a stale index entry dropped shows in a GET. 300 runs: the step
+# limit is between 800 and 1000 runs.
 def test_deadlines_follow_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 8), 16)
   return Prop.check(ops, Prop.Config(runs: 300)) do |list|
     times = clocks(list)
-    kept = list.select do |op| op.concat([0])[0] % 10 != 9 end
-    kept_times = (0...list.size).to_a.select do |i| list[i].concat([0])[0] % 10 != 9 end.map do |i| times[i] end
     start = Model(state: {}, replies: [])
-    model = (0...kept.size).to_a.reduce(start) do |acc, i| model_step(acc, kept[i], kept_times[i]) end
+    model = (0...list.size).to_a.reduce(start) do |acc, i| model_step(acc, list[i], times[i]) end
     Prop.eq(run_with_sweeps(table, list, times).to_a, Bytes.concat(model.replies).to_a)
   end
 end

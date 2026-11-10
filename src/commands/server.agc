@@ -1,9 +1,9 @@
-## Server-wide commands: INFO, DBSIZE, TIME, FLUSHALL. Checked against Redis 7.2
+## Server-wide commands: INFO, DBSIZE, TIME, FLUSHALL, FLUSHDB. Checked against Redis 7.2
 ## server.c (infoCommand, genRedisInfoString, timeCommand), db.c (dbsizeCommand,
-## getFlushCommandFlags, flushallCommand).
+## getFlushCommandFlags, flushallCommand, flushdbCommand).
 
 import Args from "args"
-import {Call, Command, Outcome, fail, reply, write_all} from "command"
+import {Call, Command, Outcome, fail, reply, write, write_all} from "command"
 import Connection from "connection"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
@@ -20,6 +20,7 @@ export def commands() -> List[Command]
     Command(name: "dbsize", arity: 1, handler: &dbsize),
     Command(name: "time", arity: 1, handler: &time),
     Command(name: "flushall", arity: -1, handler: &flushall),
+    Command(name: "flushdb", arity: -1, handler: &flushdb),
   ]
 end
 
@@ -41,6 +42,14 @@ def flushall(call: Call) -> Outcome
   end
 
   return write_all(call, Databases.fresh(), Reply.Simple("OK"))
+end
+
+def flushdb(call: Call) -> Outcome
+  if call.args.size > 1 or (call.args.size == 1 and not flush_mode?(call.args[0]))
+    return fail(call, "ERR syntax error")
+  end
+
+  return write(call, Keyspace.Keyspace(), Reply.Simple("OK"))
 end
 
 def flush_mode?(word: Bytes) -> Bool

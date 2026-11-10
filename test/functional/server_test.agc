@@ -91,9 +91,24 @@ end
 # commands and not subcommands, and COMMAND alone lists the rows.
 def test_command() -> Result[Void]
   result = talk([["COMMAND", "DOCS"], ["COMMAND", "COUNT"], ["COMMAND", "COUNT", "x"]])
-  try Test.eq(result.reply, "*0\r\n:47\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
+  try Test.eq(result.reply, "*0\r\n:51\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
   listed = talk([["COMMAND"]]).reply
   quit_entry = "*10\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n*0\r\n*0\r\n*0\r\n*0\r\n"
-  try Test.assert(listed.take(5) == "*47\r\n".bytes, "one entry per command")
+  try Test.assert(listed.take(5) == "*51\r\n".bytes, "one entry per command")
   return Test.assert(listed.size >= quit_entry.bytesize * 24, "ten items each")
+end
+
+# FLUSHDB empties the selected database only, and checks its option as FLUSHALL.
+def test_flushdb_empties_the_selected_database() -> Result[Void]
+  sent = [
+    words(["FLUSHDB", "x"]),
+    words(["FLUSHDB", "ASYNC"]),
+    words(["DBSIZE"]),
+    words(["SELECT", "3"]),
+    words(["DBSIZE"]),
+  ]
+
+  result = exchange(filled(), Bytes.concat(sent), 0)
+  try Test.eq(result.reply, "-ERR syntax error\r\n+OK\r\n:0\r\n+OK\r\n:1\r\n".bytes)
+  return Test.eq(space_at(result.databases, 0), Keyspace())
 end

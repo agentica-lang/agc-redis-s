@@ -17,6 +17,8 @@ export SWEEP_MS = 100
 export struct Store
   databases: Databases
   sessions: Map[Int, Session]
+  ## The state of a small generator, 0 to 2^31 - 1; every request advances it.
+  seed: Int = 1
 end
 
 ## The store after the request, the bytes to send, and whether to close the
@@ -85,19 +87,26 @@ def run_for(
     session: session,
     args: argv.drop(1),
     now_ms: now_ms,
+    random: store.seed,
     client_id: client_id,
     clients: store.sessions.size,
     table: table,
   )
 
   outcome = Dispatch.execute(table, argv[0], call)
-  next_store = apply(store, session.db, outcome.change)
+  next_store = apply(store, session.db, outcome.change).with(seed: advanced(store.seed, now_ms))
   if outcome.session != session
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
 
   reply = Bytes.concat(outcome.replies.map do |r| Writer.encode(r) end)
   return Ran(store: next_store, reply: reply, close: outcome.effects.include?(Effect.Close))
+end
+
+# A linear congruential step; the product stays under 2^62, so no overflow. The
+# clock is mixed in so the sequence is not the same after every start.
+def advanced(seed: Int, now_ms: Int) -> Int
+  return (seed * 1_103_515_245 + 12_345 + now_ms % 65_536) % 2_147_483_648
 end
 
 def apply(store: Store, db: Int, change: Change) -> Store
