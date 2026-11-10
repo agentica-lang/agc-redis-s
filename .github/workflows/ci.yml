@@ -23,6 +23,7 @@ jobs:
 
       - name: Check, format and test
         run: |
+          agentica --version
           make check
           make fmt-check
           make test

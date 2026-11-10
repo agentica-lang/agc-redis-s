@@ -4,17 +4,16 @@ import Connection from "connection"
 import {Message} from "message"
 
 ACCEPT_MS = 1000
-## The id that `Task.monitor` reports for the store task; clients start at 1.
-export STORE_ID = 0
 
-## Runs until the store task stops. The listener belongs to the caller. A task
-## that ends puts its id in `downs`; the loop then closes the client's socket
+## Runs until the store task stops, which closes `inbox` (see main). A task
+## that ends puts a code in `downs`: its id when it crashed, the negative id
+## when it ended on its own. For a crashed one the loop closes the socket
 ## (a crashed task never did) and tells the store task. The sockets stay owned
 ## here: `Task.spawn_owning` would also close the inbox with the connection.
 export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Channel[Int]) -> Void
   next_id = 1
   sockets: Map[Int, Socket] = {}
-  while true
+  while not inbox.closed?
     case TCP.accept(listener, ACCEPT_MS)
       ok(socket) ->
         sockets = sockets.put(next_id, socket)
@@ -23,42 +22,49 @@ export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Chann
       error(_) -> nil
     end
 
-    case reap(sockets, inbox, downs)
-      none -> return
-      some(left) -> sockets = left
-    end
+    sockets = reap(sockets, inbox, downs)
+  end
+
+  for socket in sockets.values
+    TCP.close(socket)
   end
 end
 
 def start(socket: Socket, inbox: Channel[Message], downs: Channel[Int], id: Int) -> Void
   task = Task.spawn(&Connection.serve, Connection.Link(socket: socket, inbox: inbox, id: id))
-  Task.monitor(task, downs) do |_| id end
+  Task.monitor(task, downs) do |down| down_code(id, down) end
 end
 
-# Handles the tasks that ended; none when the store task is one of them.
-def reap(sockets: Map[Int, Socket], inbox: Channel[Message], downs: Channel[Int]) -> Optional[Map[Int, Socket]]
+def down_code(id: Int, down: TaskDown) -> Int
+  case down.reason
+    TaskExit.Ok -> return -id
+    TaskExit.Crashed -> return id
+    TaskExit.Cancelled -> return id
+  end
+end
+
+def reap(sockets: Map[Int, Socket], inbox: Channel[Message], downs: Channel[Int]) -> Map[Int, Socket]
   left = sockets
   while true
     case downs.recv(0)
-      error(_) -> return some(left)
-      ok(id) ->
-        if id == STORE_ID
-          return none
-        end
-
-        left = release(left, inbox, id)
+      error(_) -> return left
+      ok(code) -> left = release(left, inbox, code)
     end
   end
 
-  return some(left)
+  return left
 end
 
-def release(sockets: Map[Int, Socket], inbox: Channel[Message], id: Int) -> Map[Int, Socket]
+def release(sockets: Map[Int, Socket], inbox: Channel[Message], code: Int) -> Map[Int, Socket]
+  id = code.abs
   case sockets.get(id)
     none -> return sockets
     some(socket) ->
-      TCP.close(socket)
-      Connection.send_close(inbox, id, "".bytes)
+      if code > 0
+        TCP.close(socket)
+        Connection.send_close(inbox, id, "".bytes)
+      end
+
       return sockets.delete(id)
   end
 end

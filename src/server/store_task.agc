@@ -9,13 +9,21 @@ import {Message} from "message"
 import Writer from "../resp/writer"
 import {Keyspace} from "../store/keyspace"
 
-SEND_TIMEOUT_MS = 1000
 POLL_MS = 1000
+# Phase 0 cap on the replies a client has not read yet. Over it the client is
+# dropped, so a client that never reads cannot make the server grow. Redis has
+# no cap for normal clients by default; this is a stricter choice.
+MAX_PENDING_BYTES = 8_388_608
+
+struct Client
+  outbox: Channel[Bytes]
+  pending: ATS[Int, Int]
+end
 
 struct State
   keyspace: Keyspace
   table: Map[String, Command]
-  clients: Map[Int, Channel[Bytes]]
+  clients: Map[Int, Client]
 end
 
 ## Runs until `inbox` is closed.
@@ -39,7 +47,8 @@ end
 
 def handle(state: State, message: Message) -> State
   case message
-    Message.Open(id, outbox) -> return state.with(clients: state.clients.put(id, outbox))
+    Message.Open(id, outbox, pending) ->
+      return state.with(clients: state.clients.put(id, Client(outbox: outbox, pending: pending)))
     Message.Exec(id, argv) -> return exec(state, id, argv)
     Message.Close(id, farewell) -> return close(state, id, farewell)
   end
@@ -67,8 +76,10 @@ def exec(state: State, id: Int, argv: List[Bytes]) -> State
   return sent
 end
 
-# This is the one place where a slow client can slow the others: the wait is
-# SEND_TIMEOUT_MS at most, then the client is dropped.
+# The store task never waits for a client: a full outbox or too many unread
+# bytes drops the client at once. `pending` is the bytes queued and not yet
+# sent, so it covers the outbox and the send in progress; it is exact because
+# only this task adds and only the writer subtracts, after each send.
 def send(state: State, id: Int, bytes: Bytes) -> State
   if bytes.empty?
     return state
@@ -76,8 +87,14 @@ def send(state: State, id: Int, bytes: Bytes) -> State
 
   case state.clients.get(id)
     none -> return state
-    some(outbox) ->
-      case outbox.send(bytes, SEND_TIMEOUT_MS)
+    some(client) ->
+      total = client.pending.add(0, bytes.size)
+      backlog = total > bytes.size
+      if backlog and total > MAX_PENDING_BYTES
+        return drop(state, id)
+      end
+
+      case client.outbox.send(bytes, 0)
         ok(_) -> return state
         error(_) -> return drop(state, id)
       end
@@ -93,8 +110,8 @@ end
 def drop(state: State, id: Int) -> State
   case state.clients.get(id)
     none -> return state
-    some(outbox) ->
-      outbox.close
+    some(client) ->
+      client.outbox.close
       return state.with(clients: state.clients.delete(id))
   end
 end

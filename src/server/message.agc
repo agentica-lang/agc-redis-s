@@ -3,8 +3,10 @@
 ## requests it sent.
 
 export enum Message
-  ## A new client; replies for it go to the outbox.
-  Open(Int, Channel[Bytes])
+  ## A new client; replies go to the outbox. The table holds under key 0 the
+  ## bytes put in the outbox and not yet sent: the writer subtracts, the store
+  ## task adds and checks the cap.
+  Open(Int, Channel[Bytes], ATS[Int, Int])
   ## A request: the client id and the name and arguments as the client sent them.
   Exec(Int, List[Bytes])
   ## The client is gone or broke the protocol: send the last bytes, close.

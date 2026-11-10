@@ -9,7 +9,8 @@ import Writer from "writer"
 # A receive timeout closes the socket and there is no wait-forever form: a year.
 IDLE_MS = 31_536_000_000
 READ_BYTES = 65_536
-SEND_TIMEOUT_MS = 1000
+# How long a request waits for room in the inbox of the store task.
+INBOX_SEND_MS = 1000
 WRITER_WAIT_MS = 5000
 
 export struct Link
@@ -26,14 +27,15 @@ end
 ## Serves the client until it leaves; runs as the client's own task.
 export def serve(link: Link) -> Void
   outbox: Channel[Bytes] = Channel.new(1024)
-  case link.inbox.send(Message.Open(link.id, outbox), SEND_TIMEOUT_MS)
+  pending: ATS[Int, Int] = ATS.new()
+  case link.inbox.send(Message.Open(link.id, outbox, pending), INBOX_SEND_MS)
     error(_) ->
       TCP.close(link.socket)
       return
     ok(_) -> nil
   end
 
-  writer = Task.spawn(&Writer.run, Writer.Pipe(socket: link.socket, outbox: outbox))
+  writer = Task.spawn(&Writer.run, Writer.Pipe(socket: link.socket, outbox: outbox, pending: pending))
   farewell = read_loop(link)
   send_close(link.inbox, link.id, farewell)
   case Task.await(writer, WRITER_WAIT_MS)
@@ -48,7 +50,7 @@ end
 ## table for good: retry until the message is in or nobody will read it.
 export def send_close(inbox: Channel[Message], id: Int, farewell: Bytes) -> Void
   while true
-    case inbox.send(Message.Close(id, farewell), SEND_TIMEOUT_MS)
+    case inbox.send(Message.Close(id, farewell), INBOX_SEND_MS)
       ok(_) -> return
       error(_) ->
         if inbox.closed?
@@ -89,7 +91,7 @@ def drain(link: Link, buffer: Bytes) -> Drained
       Read.Skip(next) -> pos = next
       Read.Request(argv, next) ->
         # A request that is lost would shift every later reply: end instead.
-        case link.inbox.send(Message.Exec(link.id, argv), SEND_TIMEOUT_MS)
+        case link.inbox.send(Message.Exec(link.id, argv), INBOX_SEND_MS)
           error(_) -> return Drained.Broken("".bytes)
           ok(_) -> pos = next
         end

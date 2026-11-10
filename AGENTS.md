@@ -24,8 +24,8 @@ src/
                      store_task (owns the data), message, clock
 test/                unit tests (`*_test.agc`), the same path as the source;
                      support.agc holds the helpers they share
-integration/         Python peer, standard library only: raw socket, RESP
-                     by hand, one server process per test class
+integration/         one smoke test of the real binary (Python, standard
+                     library only)
 tools/               check_purity.py and its tests (Python, standard library)
 ```
 
@@ -44,12 +44,14 @@ tools/               check_purity.py and its tests (Python, standard library)
   `Bytes`, never `String`. A reply built from client bytes (an echoed
   argument) is a `Reply.Error(Bytes)`, never decoded and re-encoded.
 - A handler builds its `Outcome` only with the helpers of
-  `commands/command.agc` (`reply`, `reply_and_close`, `fail`, `fail_bytes`,
+  `commands/command.agc` (`reply`, `replies`, `reply_and_close`, `fail`,
   `wrong_arity`), never with the constructor. A later feature adds a field to
   `Outcome` (or `Call`) with a default and a helper in the PR that needs it,
   and no handler changes.
 - Tests: unit and integration tests only, no BDD; few, on the important
-  behavior. Network tests use localhost and port 0 and clean up every process.
+  behavior. TCP is tested in the Agentica repo: here one smoke test
+  (`integration/`) proves the binary starts, answers PING, QUIT closes, and
+  SIGTERM frees the port. It uses port 0 and stops its server.
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
@@ -62,7 +64,7 @@ tools/               check_purity.py and its tests (Python, standard library)
 
 - `make check` (purity, `agentica check`, lint), `make fmt-check`,
   `make test` (unit tests of `test/` and `tools/`), `make integration`
-  (starts the server on port 0). `agentica fmt src test`
+  (the smoke test). `agentica fmt src test`
   fixes formatting.
 
 ## How a command travels
@@ -91,7 +93,7 @@ used by `QUIT`) is what the server does after the replies.
 3. A new data type: a variant in `store/value.agc` and its operations in
    `store/<type>.agc`. Handlers call those; they never reach into `Value`.
 4. A unit test in `test/commands/<family>_test.agc` (the same name).
-5. One case in `integration/` when the wire behavior matters.
+5. Nothing in `integration/`: it is only the smoke test.
 6. Mark it in the table of its phase in `README.md`.
 
 ## Where later features go

@@ -21,7 +21,7 @@ def start(config: Config.Config) -> Void
       inbox: Channel[Message] = Channel.new(INBOX_SIZE)
       downs: Channel[Int] = Channel.new(INBOX_SIZE)
       store = Task.spawn(&StoreTask.run, inbox)
-      Task.monitor(store, downs) do |_| Accept.STORE_ID end
+      Task.monitor(store, downs) do |_| stop_inbox(inbox) end
       # Tests start the server on port 0 and read the real port from this line.
       puts("ready #{config.bind}:#{TCP.local_port(listener)}")
       IO.flush()
@@ -29,6 +29,13 @@ def start(config: Config.Config) -> Void
       # Without the store task no command can run: stop, do not hang the clients.
       fail("the store task stopped")
   end
+end
+
+# Closing the inbox is how the rest of the server learns that the store task is
+# gone: sends to it end, and the accept loop stops.
+def stop_inbox(inbox: Channel[Message]) -> Int
+  inbox.close
+  return 0
 end
 
 def fail(text: String) -> Void

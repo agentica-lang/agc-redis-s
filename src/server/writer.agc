@@ -4,18 +4,22 @@
 # `TCP.send_bytes` takes at most 1 MiB.
 MAX_SEND = 1_048_576
 POLL_MS = 1000
-SEND_TIMEOUT_MS = 30_000
+# A client that takes nothing for this long is gone; its socket is closed.
+WRITE_TIMEOUT_MS = 5000
 
 export struct Pipe
   socket: Socket
   outbox: Channel[Bytes]
+  pending: ATS[Int, Int]
 end
 
 export def run(pipe: Pipe) -> Void
   while true
     case pipe.outbox.recv(POLL_MS)
       ok(bytes) ->
-        if not send_all(pipe, bytes)
+        sent = send_all(pipe, bytes)
+        _ = pipe.pending.add(0, -bytes.size)
+        if not sent
           break
         end
 
@@ -35,7 +39,7 @@ end
 def send_all(pipe: Pipe, bytes: Bytes) -> Bool
   rest = bytes
   while not rest.empty?
-    case TCP.send_bytes(pipe.socket, rest.take(MAX_SEND), SEND_TIMEOUT_MS)
+    case TCP.send_bytes(pipe.socket, rest.take(MAX_SEND), WRITE_TIMEOUT_MS)
       ok(_) -> rest = rest.drop(MAX_SEND)
       error(_) ->
         pipe.outbox.close
