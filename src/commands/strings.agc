@@ -1,18 +1,20 @@
 ## String commands: GET, SET, GETSET, GETDEL, SETNX, MGET, MSET, MSETNX, APPEND,
 ## STRLEN, GETRANGE, SETRANGE, GETEX, SETEX and PSETEX. Checked against Redis
-## 7.2 t_string.c. The INCR family is in numbers.agc. Only the string type
-## exists, so no handler answers WRONGTYPE yet.
+## 7.2 t_string.c. The INCR family is in numbers.agc. A command that reads or
+## changes the old value answers WRONGTYPE for a key that holds another type;
+## the ones that replace the value (SET without GET, SETEX, MSET) and the ones
+## that only ask whether the key exists (SETNX, MSETNX) do not.
 ##
 ## A write that stores a whole new value (SET, GETSET, SETNX, MSET, SETEX...)
 ## drops the deadline of the key (`Keyspace.set`); one that changes the old
 ## value (APPEND, SETRANGE, INCR) keeps it (`Keyspace.put`).
 
 import Args from "args"
-import {Call, Command, Outcome, fail, reply, write} from "command"
+import {Call, Command, Outcome, fail, reply, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import Strings from "../store/strings"
-import {Value, joined_text, pending?, value_size} from "../store/value"
+import {Value, joined_text, pending?, string?, value_size} from "../store/value"
 
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 NOT_INT = "ERR value is not an integer or out of range"
@@ -53,12 +55,22 @@ export def commands() -> List[Command]
   ]
 end
 
-# The string at a key, or none.
+# The string at a key, or none (a key of another type counts as none: MGET
+# answers nil for it, and the other commands check `foreign?` first).
 def lookup(call: Call, key: Bytes) -> Optional[Bytes]
   case Keyspace.get(call.keyspace, key, call.now_ms)
     none -> return none
-    some(value) -> return some(joined_text(value))
+    some(value) ->
+      if not string?(value)
+        return none
+      end
+
+      return some(joined_text(value))
   end
+end
+
+def foreign?(call: Call, key: Bytes) -> Bool
+  return Strings.foreign?(call.keyspace, key, call.now_ms)
 end
 
 # Whether a key holds a string; a value in pieces is not joined for it.
@@ -101,6 +113,10 @@ def bulk_or_nil(value: Optional[Bytes]) -> Reply
 end
 
 def get(call: Call) -> Outcome
+  if foreign?(call, call.args[0])
+    return wrong_type(call)
+  end
+
   settled = settle(call, [call.args[0]])
   return read_done(call, settled, bulk_or_nil(peek(call, settled, call.args[0])))
 end
@@ -190,6 +206,10 @@ def set_with(call: Call, found: Options, deadline: Optional[Int]) -> Outcome
   key = call.args[0]
   old: Optional[Bytes] = none
   if found.get
+    if foreign?(call, key)
+      return wrong_type(call)
+    end
+
     old = lookup(call, key)
   end
 
@@ -249,6 +269,10 @@ def getex(call: Call) -> Outcome
   end
 
   key = call.args[0]
+  if foreign?(call, key)
+    return wrong_type(call)
+  end
+
   settled = settle(call, [key])
   case peek(call, settled, key)
     none -> return reply(call, Reply.NilBulk)
@@ -284,11 +308,19 @@ def retimed(
 end
 
 def getset(call: Call) -> Outcome
+  if foreign?(call, call.args[0])
+    return wrong_type(call)
+  end
+
   old = lookup(call, call.args[0])
   return write(call, Keyspace.set(call.keyspace, call.args[0], Value.Str(call.args[1])), bulk_or_nil(old))
 end
 
 def getdel(call: Call) -> Outcome
+  if foreign?(call, call.args[0])
+    return wrong_type(call)
+  end
+
   old = lookup(call, call.args[0])
   if old.none?
     return reply(call, Reply.NilBulk)
@@ -358,6 +390,10 @@ end
 def append(call: Call) -> Outcome
   key = call.args[0]
   more = call.args[1]
+  if foreign?(call, key)
+    return wrong_type(call)
+  end
+
   held = Keyspace.get(call.keyspace, key, call.now_ms)
   case Strings.append(held, more, Strings.MAX_BYTES)
     none -> return fail(call, TOO_BIG)
@@ -367,6 +403,10 @@ def append(call: Call) -> Outcome
 end
 
 def strlen(call: Call) -> Outcome
+  if foreign?(call, call.args[0])
+    return wrong_type(call)
+  end
+
   return reply(call, Reply.Integer(size_of(call, call.args[0])))
 end
 
@@ -377,6 +417,10 @@ def getrange(call: Call) -> Outcome
       case Args.parse_int(call.args[2])
         none -> return fail(call, NOT_INT)
         some(stop) ->
+          if foreign?(call, call.args[0])
+            return wrong_type(call)
+          end
+
           settled = settle(call, [call.args[0]])
           text = peek(call, settled, call.args[0]).unwrap_or("".bytes)
           return read_done(call, settled, Reply.Bulk(Strings.get_range(text, start, stop)))
@@ -395,6 +439,10 @@ def setrange(call: Call) -> Outcome
       value = call.args[2]
       if offset < 0
         return fail(call, "ERR offset is out of range")
+      end
+
+      if foreign?(call, key)
+        return wrong_type(call)
       end
 
       if value.empty?

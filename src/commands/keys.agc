@@ -11,7 +11,7 @@ import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
 import Glob from "../store/glob"
 import Keyspace from "../store/keyspace"
-import {Value} from "../store/value"
+import {Value, type_name} from "../store/value"
 
 STAR = 42
 
@@ -72,7 +72,7 @@ end
 def type(call: Call) -> Outcome
   case Keyspace.get(call.keyspace, call.args[0], call.now_ms)
     none -> return reply(call, Reply.Simple("none"))
-    some(_) -> return reply(call, Reply.Simple("string"))
+    some(value) -> return reply(call, Reply.Simple(type_name(value)))
   end
 end
 

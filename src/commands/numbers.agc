@@ -6,10 +6,11 @@
 ## shows it: a value built by APPEND is joined here, and written back anyway.
 
 import Args from "args"
-import {Call, Command, Outcome, fail, write} from "command"
+import {Call, Command, Outcome, fail, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import LongDouble from "../store/long_double"
+import Strings from "../store/strings"
 import {Value, joined_text} from "../store/value"
 
 NOT_INT = "ERR value is not an integer or out of range"
@@ -36,7 +37,8 @@ def decr(call: Call) -> Outcome
   return add_to(call, -1)
 end
 
-# The increment is read before the key, so a bad one wins over a bad value.
+# The increment is read before the key, so a bad one wins over a bad value
+# (and over WRONGTYPE).
 def incrby(call: Call) -> Outcome
   case Args.parse_int(call.args[1])
     none -> return fail(call, NOT_INT)
@@ -69,6 +71,10 @@ end
 # no sum is ever formed outside 64 bits.
 def add_to(call: Call, delta: Int) -> Outcome
   key = call.args[0]
+  if Strings.foreign?(call.keyspace, key, call.now_ms)
+    return wrong_type(call)
+  end
+
   case Args.parse_int(held_text(call, key))
     none -> return fail(call, NOT_INT)
     some(old) ->
@@ -89,6 +95,10 @@ end
 # value is read before the increment; both fail with the same text.
 def incrbyfloat(call: Call) -> Outcome
   key = call.args[0]
+  if Strings.foreign?(call.keyspace, key, call.now_ms)
+    return wrong_type(call)
+  end
+
   case LongDouble.parse(held_text(call, key))
     none -> return fail(call, NOT_FLOAT)
     some(old) ->

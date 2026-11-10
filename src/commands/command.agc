@@ -116,3 +116,8 @@ end
 export def container(name: String) -> Command
   return Command(name: name, arity: -2, handler: &wrong_arity, container: true)
 end
+
+## What a command answers when the key holds another type (Redis's `checkType`).
+export def wrong_type(call: Call) -> Outcome
+  return fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")
+end

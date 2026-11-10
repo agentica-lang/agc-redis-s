@@ -9,6 +9,7 @@ import {Reply} from "../resp/reply"
 import Glob from "../store/glob"
 import Keyspace from "../store/keyspace"
 import Scan from "../store/scan"
+import {type_name} from "../store/value"
 
 STAR = 42
 DEFAULT_COUNT = 10
@@ -19,7 +20,8 @@ BEYOND = 9_000_000_000
 struct Options
   count: Int = DEFAULT_COUNT
   pattern: Optional[Bytes] = none
-  string_only: Bool = true
+  ## The lowercase name after TYPE; a name that is no type lists nothing.
+  type: Optional[String] = none
   refused: Optional[String] = none
 end
 
@@ -51,8 +53,12 @@ def scan_from(call: Call, cursor: Int) -> Outcome
 end
 
 def wanted?(call: Call, options: Options, key: Bytes) -> Bool
-  if not options.string_only or Keyspace.get(call.keyspace, key, call.now_ms).none?
-    return false
+  case Keyspace.get(call.keyspace, key, call.now_ms)
+    none -> return false
+    some(value) ->
+      if options.type.some? and options.type != some(type_name(value))
+        return false
+      end
   end
 
   case options.pattern
@@ -130,7 +136,7 @@ def read_options(words: List[Bytes]) -> Options
     elsif word == "match" and has_value
       found = found.with(pattern: some(words[i + 1]))
     elsif word == "type" and has_value
-      found = found.with(string_only: Args.lower(words[i + 1]) == "string")
+      found = found.with(type: some(Args.lower(words[i + 1])))
     else
       return found.with(refused: some("ERR syntax error"))
     end
