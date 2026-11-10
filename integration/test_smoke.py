@@ -9,6 +9,21 @@ import unittest
 from server import Server, port_is_free, read_exactly
 
 
+READ_SECONDS = 10
+
+
+def read_to_eof(sock):
+    """Everything up to the close; a server that never closes fails the test
+    with a timeout instead of hanging it."""
+    sock.settimeout(READ_SECONDS)
+    data = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            return data
+        data += chunk
+
+
 class SmokeTest(unittest.TestCase):
     def test_ping_quit_and_sigterm(self):
         server = Server()
@@ -36,14 +51,14 @@ class SmokeTest(unittest.TestCase):
         with server.connect() as sock:
             sock.sendall(b"PING\r\n" * 1000 + b"SET a b\r\nGET a\r\n")
             sock.shutdown(socket.SHUT_WR)
-            self.assertEqual(sock.makefile("rb").read(), b"+PONG\r\n" * 1000 + b"+OK\r\n$1\r\nb\r\n")
+            self.assertEqual(read_to_eof(sock), b"+PONG\r\n" * 1000 + b"+OK\r\n$1\r\nb\r\n")
 
     def assert_nothing_runs_after_quit(self, server):
         # The requests behind a QUIT in one write must not run, and a client
         # that closed or quit is not counted in connected_clients.
         with server.connect() as sock:
             sock.sendall(b"QUIT\r\nSET k v\r\n")
-            self.assertEqual(sock.makefile("rb").read(), b"+OK\r\n")
+            self.assertEqual(read_to_eof(sock), b"+OK\r\n")
         with server.connect() as sock:
             sock.sendall(b"PING\r\n")
             self.assertEqual(read_exactly(sock, 7), b"+PONG\r\n")

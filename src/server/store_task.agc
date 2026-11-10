@@ -53,7 +53,7 @@ def handle(state: State, message: Message, now: Int) -> State
   case message
     Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
     Message.Exec(conn, argv) -> return exec(state, conn, argv, now)
-    Message.Close(conn, farewell, done) -> return hang_up(state, conn, farewell, done)
+    Message.Close(conn, farewell) -> return hang_up(state, conn, farewell)
     Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
   end
 end
@@ -79,10 +79,14 @@ def send(conn: Dock.Conn, bytes: Bytes) -> Void
   end
 end
 
-def hang_up(state: State, conn: Dock.Conn, farewell: Bytes, done: Channel[Bool]) -> State
-  next_state = close(state, conn, farewell)
-  _ = done.send(true, 0)
-  return next_state
+# A client that quit already has no session and its connection is closed: the
+# close that its handler sends after the end it saw does nothing.
+def hang_up(state: State, conn: Dock.Conn, farewell: Bytes) -> State
+  if not Requests.joined?(state.store, conn.id)
+    return state
+  end
+
+  return close(state, conn, farewell)
 end
 
 # `Dock.close` writes what is queued first, so the replies and the farewell go

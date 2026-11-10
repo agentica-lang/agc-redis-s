@@ -27,18 +27,7 @@ export def serve(conn: Dock.Conn, inbox: Channel[Message]) -> Void
 
   case read_loop(conn, inbox)
     none -> return
-    some(farewell) ->
-      # The store task sends the farewell after the replies that are still in
-      # the inbox and closes the connection. Were this handler to return first,
-      # dock would close the socket before them: a client that sent its
-      # requests and shut its side down would lose the replies. A receive
-      # cannot wait for it (after an EOF it returns at once), so the store task
-      # answers on `done`.
-      done: Channel[Bool] = Channel.new(1)
-      case inbox.send(Message.Close(conn, farewell, done), INBOX_SEND_MS)
-        ok(_) -> wait_for(done, inbox)
-        error(_) -> nil
-      end
+    some(farewell) -> hand_over_to_store(conn, inbox, farewell)
   end
 end
 
@@ -54,6 +43,21 @@ export def gone(inbox: Channel[Message], id: Int) -> Void
           return
         end
     end
+  end
+end
+
+# The store task sends the farewell after the replies that are still in the
+# inbox, then closes the connection. Were this handler to return without the
+# hand-over, dock would close the socket before them: a client that sent its
+# requests and shut its side down would lose the replies. The hand-over keeps
+# the connection open after the handler returned; `Dock.close` in the store
+# task ends it.
+def hand_over_to_store(conn: Dock.Conn, inbox: Channel[Message], farewell: Bytes) -> Void
+  Dock.hand_over(conn)
+  case inbox.send(Message.Close(conn, farewell), INBOX_SEND_MS)
+    ok(_) -> nil
+    # Nobody will close it for us.
+    error(_) -> Dock.close(conn)
   end
 end
 
@@ -77,15 +81,6 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
   end
 
   return none
-end
-
-def wait_for(done: Channel[Bool], inbox: Channel[Message]) -> Void
-  while not inbox.closed?
-    case done.recv(INBOX_SEND_MS)
-      ok(_) -> return
-      error(_) -> nil
-    end
-  end
 end
 
 # Sends every whole request the chunk completed, in order.
