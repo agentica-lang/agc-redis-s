@@ -57,6 +57,9 @@ tools/               check_purity.py and its tests (Python, standard library)
   that every handler that changes data answers with `write` or `write_all`. A
   later feature adds a field to `Outcome` (or `Call`) with a default and a
   helper in the PR that needs it, and no handler changes.
+- Build at the edge: `main` (`agc_redis_s.agc`) builds the collaborators (the
+  store, the command table, the clock) and passes them in; a function does not
+  build what it uses while it calls it, and only `src/server/` reads the clock.
 - Tests: as few as needed that still cover the software well; before adding
   one ask what bug it catches that no other test catches. No BDD, no test per
   function, no near-duplicates.

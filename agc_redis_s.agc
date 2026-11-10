@@ -1,9 +1,15 @@
-## The server: parse the options, start the store task, accept clients.
+## The server: parse the options, build the store, the command table and the
+## clock, start the store task, accept clients. This is the one place that
+## builds them.
 
 import Dock from "pkg/dock/dock"
+import Requests from "src/commands/session"
+import Table from "src/commands/table"
 import Config from "src/server/config"
 import Connection from "src/server/connection"
+import Clock from "src/server/clock"
 import {Message} from "src/server/message"
+import {fresh} from "src/store/databases"
 import StoreTask from "src/server/store_task"
 
 INBOX_SIZE = 4096
@@ -21,7 +27,8 @@ end
 
 def start(config: Config.Config) -> Void
   inbox: Channel[Message] = Channel.new(INBOX_SIZE)
-  store = Task.spawn(&StoreTask.run, inbox)
+  setup = StoreTask.Setup(inbox: inbox, store: Requests.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
+  store = Task.spawn(&StoreTask.run, setup)
   options = Dock.Config(port: config.port, host: config.bind, max_outbox_bytes: MAX_PENDING_BYTES)
   hooked = Dock.on_close(options) do |conn| Connection.gone(inbox, conn.id) end
   started = Dock.start(hooked) do |conn| Connection.serve(conn, inbox) end
