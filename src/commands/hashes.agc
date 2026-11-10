@@ -1,14 +1,22 @@
-## Hash commands: HSET, HMSET, HSETNX, HGET, HMGET, HDEL, HLEN, HEXISTS and
-## HSTRLEN. Checked against Redis 7.2 t_hash.c (hsetCommand, hsetnxCommand,
-## hgetCommand, hmgetCommand, hdelCommand, hlenCommand, hstrlenCommand,
-## hexistsCommand) and object.c (checkType). A command that reads or writes
-## answers WRONGTYPE for a key of another type, before it looks at the fields;
-## a missing key is an empty hash.
+## Hash commands: HSET, HMSET, HSETNX, HGET, HMGET, HDEL, HLEN, HEXISTS,
+## HSTRLEN, HGETALL, HKEYS, HVALS, HINCRBY and HINCRBYFLOAT. Checked against
+## Redis 7.2 t_hash.c (one function per command, genericHgetallCommand for the
+## three listings), object.c (checkType, getLongLongFromObjectOrReply,
+## getLongDoubleFromObjectOrReply) and util.c (string2ll, string2ld, ld2string).
+## A command that reads or writes answers WRONGTYPE for a key of another type,
+## before it looks at the fields; a missing key is an empty hash.
 
-import {Call, Command, Outcome, reply, wrong_arity, wrong_type, write} from "command"
+import Args from "args"
+import {Call, Command, Outcome, fail, reply, wrong_arity, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
+import LongDouble from "../store/long_double"
 import Hashes from "../store/hashes"
 import {Held} from "../store/hashes"
+
+NOT_INT = "ERR value is not an integer or out of range"
+NOT_FLOAT = "ERR value is not a valid float"
+INT_MAX = 9_223_372_036_854_775_807
+INT_MIN = -9_223_372_036_854_775_807 - 1
 
 export def commands() -> List[Command]
   return [
@@ -21,6 +29,11 @@ export def commands() -> List[Command]
     Command(name: "hlen", arity: 2, handler: &hlen),
     Command(name: "hexists", arity: 3, handler: &hexists),
     Command(name: "hstrlen", arity: 3, handler: &hstrlen),
+    Command(name: "hgetall", arity: 2, handler: &hgetall),
+    Command(name: "hkeys", arity: 2, handler: &hkeys),
+    Command(name: "hvals", arity: 2, handler: &hvals),
+    Command(name: "hincrby", arity: 4, handler: &hincrby),
+    Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat),
   ]
 end
 
@@ -148,6 +161,105 @@ def hstrlen(call: Call) -> Outcome
     Held.Foreign -> return wrong_type(call)
     Held.Missing -> return reply(call, Reply.Integer(0))
     Held.Fields(fields) -> return reply(call, Reply.Integer(fields.get(call.args[1]).unwrap_or("".bytes).size))
+  end
+end
+
+# RESP2 answers a map as a flat array: field, value, field, value.
+def hgetall(call: Call) -> Outcome
+  return listing(call, true, true)
+end
+
+def hkeys(call: Call) -> Outcome
+  return listing(call, true, false)
+end
+
+def hvals(call: Call) -> Outcome
+  return listing(call, false, true)
+end
+
+def listing(call: Call, names: Bool, values: Bool) -> Outcome
+  case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> return reply(call, Reply.Array([]))
+    Held.Fields(fields) ->
+      items: List[Reply] = []
+      for name in fields.keys
+        if names
+          items = items.push(Reply.Bulk(name))
+        end
+
+        if values
+          items = items.push(Reply.Bulk(fields.get(name, "".bytes)))
+        end
+      end
+
+      return reply(call, Reply.Array(items))
+  end
+end
+
+# The increment is read first, so a bad one wins over WRONGTYPE; then the
+# field, which must be an integer, and the overflow test of incrDecrCommand.
+def hincrby(call: Call) -> Outcome
+  case Args.parse_int(call.args[2])
+    none -> return fail(call, NOT_INT)
+    some(delta) ->
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return add_int(call, {}, delta)
+        Held.Fields(fields) -> return add_int(call, fields, delta)
+      end
+  end
+end
+
+def add_int(call: Call, fields: Map[Bytes, Bytes], delta: Int) -> Outcome
+  field = call.args[1]
+  old = 0
+  if fields.has_key?(field)
+    case Args.parse_int(fields.get(field, "".bytes))
+      none -> return fail(call, "ERR hash value is not an integer")
+      some(number) -> old = number
+    end
+  end
+
+  if (delta < 0 and old < 0 and delta < INT_MIN - old) or (delta > 0 and old > 0 and delta > INT_MAX - old)
+    return fail(call, "ERR increment or decrement would overflow")
+  end
+
+  total = old + delta
+  stored = Hashes.store(call.keyspace, call.args[0], fields.put(field, "#{total}".bytes), call.now_ms)
+  return write(call, stored, Reply.Integer(total))
+end
+
+# The increment is read first (a NaN or an infinity is refused here), then the
+# key and the field.
+def hincrbyfloat(call: Call) -> Outcome
+  case LongDouble.parse(call.args[2])
+    none -> return fail(call, NOT_FLOAT)
+    some(delta) ->
+      if delta.infinite
+        return fail(call, "ERR value is NaN or Infinity")
+      end
+
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return add_float(call, {}, delta)
+        Held.Fields(fields) -> return add_float(call, fields, delta)
+      end
+  end
+end
+
+def add_float(call: Call, fields: Map[Bytes, Bytes], delta: LongDouble.Ext) -> Outcome
+  field = call.args[1]
+  case LongDouble.parse(fields.get(field, "0".bytes))
+    none -> return fail(call, "ERR hash value is not a float")
+    some(old) ->
+      case LongDouble.add(old, delta)
+        none -> return fail(call, "ERR increment would produce NaN or Infinity")
+        some(sum) ->
+          shown = LongDouble.format(sum)
+          stored = Hashes.store(call.keyspace, call.args[0], fields.put(field, shown), call.now_ms)
+          return write(call, stored, Reply.Bulk(shown))
+      end
   end
 end
 

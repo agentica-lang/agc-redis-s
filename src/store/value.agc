@@ -25,8 +25,9 @@ end
 ## The name `TYPE` and `SCAN ... TYPE` use.
 export def type_name(value: Value) -> String
   case value
+    Value.Str(_) -> return "string"
+    Value.Appended(_, _) -> return "string"
     Value.Hash(_) -> return "hash"
-    _ -> return "string"
   end
 end
 
