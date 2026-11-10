@@ -25,9 +25,9 @@ def start(config: Config.Config) -> Void
       # Tests start the server on port 0 and read the real port from this line.
       puts("ready #{config.bind}:#{TCP.local_port(listener)}")
       IO.flush()
-      # It returns only when nothing can serve clients any more: stop, do not
-      # leave them hanging.
-      fail(Accept.accept_loop(listener, inbox, downs))
+      Accept.accept_loop(listener, inbox, downs)
+      # Without the store task no command can run: stop, do not hang the clients.
+      fail("the store task stopped")
   end
 end
 

@@ -4,22 +4,15 @@ import Connection from "connection"
 import {Message} from "message"
 
 ACCEPT_MS = 1000
-ACCEPT_RETRY_MS = 100
-# `TCP.accept` returns an error for these two cases too; the texts are those of
-# the VM. An idle timeout is normal. After a real failure (such as no free
-# fds) the VM closes the listener, so nothing can recover and the server stops.
-TIMED_OUT = "operation timed out"
-LISTENER_CLOSED = "listener is closed"
 
-## Runs until the store task stops, which closes `inbox` (see main), or the
-## listener is closed; it returns why. A task
+## Runs until the store task stops, which closes `inbox` (see main). A task
 ## that ends puts a code in `downs`: its id when it crashed, the negative id
 ## when it ended on its own. For a crashed one the loop closes the socket
 ## (a crashed task never did) and tells the store task. The sockets stay owned
 ## here: `Task.spawn_owning` would also close the inbox with the connection.
 ## A `downs` notice is lost when more than 4,096 tasks end within one reap
 ## cycle; the socket of a crashed one then stays open until the server exits.
-export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Channel[Int]) -> String
+export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Channel[Int]) -> Void
   next_id = 1
   sockets: Map[Int, Socket] = {}
   while not inbox.closed?
@@ -28,28 +21,15 @@ export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Chann
         sockets = sockets.put(next_id, socket)
         start(socket, inbox, downs, next_id)
         next_id += 1
-      error(text) ->
-        if text.include?(LISTENER_CLOSED)
-          return close_all(sockets, "the listener is closed: #{text}")
-        end
-
-        if not text.include?(TIMED_OUT)
-          Task.sleep(ACCEPT_RETRY_MS)
-        end
+      error(_) -> nil
     end
 
     sockets = reap(sockets, inbox, downs)
   end
 
-  return close_all(sockets, "the store task stopped")
-end
-
-def close_all(sockets: Map[Int, Socket], reason: String) -> String
   for socket in sockets.values
     TCP.close(socket)
   end
-
-  return reason
 end
 
 def start(socket: Socket, inbox: Channel[Message], downs: Channel[Int], id: Int) -> Void
