@@ -7,7 +7,7 @@ is in the GitHub issues, one milestone per release.
 ## Map
 
 ```text
-agc_redis_s.agc      main: options, start the store task, run the accept loop
+agc_redis_s.agc      main: options, start the store task, start dock
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
                      types), writer.agc (reply to bytes), reader.agc (bytes
@@ -20,9 +20,10 @@ src/
                      helpers that build an Outcome), table.agc (all rows),
                      dispatch.agc (name, arity, call the handler), one file
                      per command family
-  server/            I/O SHELL: sockets, tasks, the clock. config, accept,
-                     connection (reader task), writer (writer task),
-                     store_task (owns the data), message, clock
+  server/            I/O SHELL: tasks, the clock; the sockets are the
+                     package `dock`. config, connection (the handler dock
+                     runs per client), store_task (owns the data), message,
+                     clock
 test/functional/     one `<domain>_test.agc` per domain
 test/                unit tests of pure logic, the same path as the source;
                      support.agc: `exchange` (request bytes -> reader ->
@@ -82,8 +83,9 @@ tools/               check_purity.py and its tests (Python, standard library)
     for the data types.
   - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
     proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
-    port. Tests of the server shell will move to the `dock` package (issue
-    #17).
+    port; it also checks that nothing runs behind a QUIT and that a client
+    that left is not counted. The sockets, the accept loop and the outboxes are
+    the package `dock`, tested there.
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
@@ -108,9 +110,12 @@ like Redis) -> commands/dispatch (table lookup, arity check) -> handler
 ```
 
 One task owns the data and takes messages from a channel, so no command needs
-a lock. Each connection has a reader task and a writer task; the writer drains
-an outbox channel of bytes. Replies and later pushes (pub/sub) go through the
-outbox, in the order the store task decided. An `Effect` (today only `Close`,
+a lock. `dock` runs one handler task per connection, which reads and sends the
+requests to the store task. The store task answers with `Dock.send` and the
+`Conn` the message carries: dock queues the bytes in the outbox of the client
+and never waits, so replies and later pushes (pub/sub) go out in the order the
+store task decided, and a client that does not read is dropped at the cap
+(`max_outbox_bytes`, 8 MiB). An `Effect` (today only `Close`,
 used by `QUIT`) is what the server does after the replies.
 
 ## How to add a command

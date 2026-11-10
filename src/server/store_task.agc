@@ -1,30 +1,29 @@
 ## The task that owns the data. It takes one message at a time, so a command
 ## never sees a half-done one, as with the single thread of Redis.
 
+import Dock from "pkg/dock/dock"
 import {Command} from "../commands/command"
 import Requests from "../commands/session"
 import {Store} from "../commands/session"
 import {fresh} from "../store/databases"
 import Table from "../commands/table"
 import Clock from "clock"
-import {MAX_PENDING_BYTES, REPLY_OVERHEAD, Message} from "message"
+import {Message} from "message"
 
 POLL_MS = 1000
-
-struct Client
-  outbox: Channel[Bytes]
-  pending: ATS[Int, Int]
-end
 
 struct State
   store: Store
   table: Map[String, Command]
-  clients: Map[Int, Client]
 end
 
 ## Runs until `inbox` is closed.
 export def run(inbox: Channel[Message]) -> Void
-  state = State(store: Requests.start(fresh()), table: Table.build(), clients: {})
+  _ = take_all(inbox, State(store: Requests.start(fresh()), table: Table.build()))
+end
+
+def take_all(inbox: Channel[Message], first: State) -> State
+  state = first
   while true
     case inbox.recv(POLL_MS)
       ok(message) -> state = handle(state, message)
@@ -35,75 +34,49 @@ export def run(inbox: Channel[Message]) -> Void
     end
   end
 
-  # No writer task is left waiting on an outbox that nothing will fill.
-  for id in state.clients.keys
-    _ = drop(state, id)
-  end
+  return state
 end
 
 def handle(state: State, message: Message) -> State
   case message
-    Message.Open(id, outbox, pending) ->
-      joined = Requests.join(state.store, id)
-      return state.with(store: joined, clients: state.clients.put(id, Client(outbox: outbox, pending: pending)))
-    Message.Exec(id, argv) -> return exec(state, id, argv)
-    Message.Close(id, farewell) -> return close(state, id, farewell)
+    Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
+    Message.Exec(conn, argv) -> return exec(state, conn, argv)
+    Message.Close(conn, farewell, done) -> return hang_up(state, conn, farewell, done)
+    Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
   end
 end
 
-# A client that was dropped (its outbox was full) may still have requests in
-# the inbox: they must not run.
-def exec(state: State, id: Int, argv: List[Bytes]) -> State
-  if not state.clients.key?(id)
-    return state
-  end
-
-  done = Requests.run(state.table, state.store, id, argv, Clock.now_ms())
-  sent = send(state.with(store: done.store), id, done.reply)
+# A client that was dropped or already quit has no session, so the requests it
+# left in the inbox do nothing.
+def exec(state: State, conn: Dock.Conn, argv: List[Bytes]) -> State
+  done = Requests.run(state.table, state.store, conn.id, argv, Clock.now_ms())
+  send(conn, done.reply)
+  next_state = state.with(store: done.store)
   if done.close
-    return drop(sent, id)
+    return close(next_state, conn, "".bytes)
   end
 
-  return sent
+  return next_state
 end
 
-# The store task never waits for a client: a full outbox or too many unread
-# bytes drops the client at once. `pending` is the bytes queued and not yet
-# sent, so it covers the outbox and the send in progress; it is exact because
-# only this task adds and only the writer subtracts, after each send.
-def send(state: State, id: Int, bytes: Bytes) -> State
-  if bytes.empty?
-    return state
-  end
-
-  case state.clients.get(id)
-    none -> return state
-    some(client) ->
-      cost = bytes.size + REPLY_OVERHEAD
-      total = client.pending.add(0, cost)
-      backlog = total > cost
-      if backlog and total > MAX_PENDING_BYTES
-        return drop(state, id)
-      end
-
-      case client.outbox.send(bytes, 0)
-        ok(_) -> return state
-        error(_) -> return drop(state, id)
-      end
+# `Dock.send` never waits for the client. It fails once the client is gone or
+# was dropped for passing the outbox cap; the session then ends with `Gone`.
+def send(conn: Dock.Conn, bytes: Bytes) -> Void
+  if not bytes.empty?
+    _ = Dock.send(conn, bytes)
   end
 end
 
-def close(state: State, id: Int, farewell: Bytes) -> State
-  return drop(send(state, id, farewell), id)
+def hang_up(state: State, conn: Dock.Conn, farewell: Bytes, done: Channel[Bool]) -> State
+  next_state = close(state, conn, farewell)
+  _ = done.send(true, 0)
+  return next_state
 end
 
-# Closing the outbox ends the writer task after it drained what is in it, and
-# the writer closes the socket, which ends the reader.
-def drop(state: State, id: Int) -> State
-  case state.clients.get(id)
-    none -> return state
-    some(client) ->
-      client.outbox.close
-      return state.with(store: Requests.leave(state.store, id), clients: state.clients.delete(id))
-  end
+# `Dock.close` writes what is queued first, so the replies and the farewell go
+# out in order. The session goes now: the requests behind a QUIT must not run.
+def close(state: State, conn: Dock.Conn, farewell: Bytes) -> State
+  send(conn, farewell)
+  Dock.close(conn)
+  return state.with(store: Requests.leave(state.store, conn.id))
 end

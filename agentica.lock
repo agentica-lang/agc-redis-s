@@ -1,6 +1,14 @@
 version = 1
 
 [[package]]
+name = "dock"
+git = "https://github.com/agentica-lang/packages"
+subdir = "dock"
+tag = "dock-0.1.0"
+commit = "d09dd294651c2fc0b3a1f24b037f1acd8dca1882"
+hash = "sha256:c648f813c33627af73d46982005b760c4b3cc00f1f7ec4212eb955bf0b7929e6"
+
+[[package]]
 name = "prop"
 git = "https://github.com/agentica-lang/packages"
 subdir = "prop"
