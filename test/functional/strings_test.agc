@@ -1,7 +1,8 @@
+import Table from "../../src/commands/table"
 import {Databases, fresh, space_at} from "../../src/store/databases"
 import Keyspace from "../../src/store/keyspace"
 import {Value} from "../../src/store/value"
-import {exchange, request, talk, to_bytes} from "../support"
+import {run_requests, talk, to_bytes} from "../support"
 import Prop from "pkg/prop/prop"
 
 # The model of a keyspace: key number to the bytes it holds.
@@ -71,29 +72,35 @@ end
 
 # One operation as a list of numbers: kind, key, two small numbers, then the
 # bytes of the value. The request it makes and the model's answer to it.
-def request_of(kinds: List[Int], op: List[Int]) -> Bytes
+# The options of SET for the six flavors: none, NX, XX, GET, NX GET, XX GET.
+def set_options(n: Int) -> List[Bytes]
+  flavors: List[List[String]] = [[], ["NX"], ["XX"], ["GET"], ["nx", "get"], ["XX", "GET"]]
+  return flavors[n % 6].map do |w| w.bytes end
+end
+
+def argv_of(kinds: List[Int], op: List[Int]) -> List[Bytes]
   xs = op.concat([0, 0, 0, 0])
   key = name(xs[1] % 3)
-  value = to_bytes(xs.drop(4))
+  value = to_bytes(op.drop(4))
   n = xs[2] % 10
   m = xs[3] % 10
   return case kinds[xs[0] % kinds.size]
-    0 -> request(["SET".bytes, key, value])
-    1 -> request(["GET".bytes, key])
-    2 -> request(["APPEND".bytes, key, value])
-    3 -> request(["GETDEL".bytes, key])
-    4 -> request(["SETNX".bytes, key, value])
-    5 -> request(["GETSET".bytes, key, value])
-    6 -> request(["SETRANGE".bytes, key, "#{n}".bytes, value])
-    7 -> request(["STRLEN".bytes, key])
-    _ -> request(["GETRANGE".bytes, key, "#{n - 4}".bytes, "#{m - 4}".bytes])
+    0 -> ["SET".bytes, key, value].concat(set_options(n))
+    1 -> ["GET".bytes, key]
+    2 -> ["APPEND".bytes, key, value]
+    3 -> ["GETDEL".bytes, key]
+    4 -> ["SETNX".bytes, key, value]
+    5 -> ["GETSET".bytes, key, value]
+    6 -> ["SETRANGE".bytes, key, "#{n}".bytes, value]
+    7 -> ["STRLEN".bytes, key]
+    _ -> ["GETRANGE".bytes, key, "#{n - 4}".bytes, "#{m - 4}".bytes]
   end
 end
 
 def model_step(kinds: List[Int], model: Model, op: List[Int]) -> Model
   xs = op.concat([0, 0, 0, 0])
   key = xs[1] % 3
-  value = xs.drop(4)
+  value = op.drop(4)
   n = xs[2] % 10
   m = xs[3] % 10
   old = model.state.get(key)
@@ -101,7 +108,21 @@ def model_step(kinds: List[Int], model: Model, op: List[Int]) -> Model
   state = model.state
   answer = "+OK\r\n".bytes
   case kinds[xs[0] % kinds.size]
-    0 -> state = state.put(key, value)
+    0 ->
+      flavor = n % 6
+      nx = flavor == 1 or flavor == 4
+      xx = flavor == 2 or flavor == 5
+      wrote = (not nx or old.none?) and (not xx or old.some?)
+      if wrote
+        state = state.put(key, value)
+      end
+
+      if flavor >= 3
+        answer = maybe(old)
+      elsif not wrote
+        answer = "$-1\r\n".bytes
+      end
+
     1 -> answer = maybe(old)
     2 ->
       state = state.put(key, old.unwrap_or([]).concat(value))
@@ -137,28 +158,30 @@ end
 # model does, and holds what the model holds after it. Three keys, so the
 # operations meet often.
 def follows_the_model(kinds: List[Int]) -> Result[Void]
+  table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 8), 14)
-  return Prop.check(ops, Prop.Config(runs: 40)) do |list|
-    requests = list.map do |op| request_of(kinds, op) end
+  return Prop.check(ops, Prop.Config(runs: 100)) do |list|
+    argvs = list.map do |op| argv_of(kinds, op) end
     start = Model(state: {}, replies: [])
     model = list.reduce(start) do |acc, op| model_step(kinds, acc, op) end
-    got = exchange(fresh(), Bytes.concat(requests))
+    got = run_requests(table, fresh(), argvs)
     held = [0, 1, 2].map do |k| left_in(got.databases, k) end
     want = [0, 1, 2].map do |k| model.state.get(k) end
-    try Prop.eq("#{got.reply}", "#{Bytes.concat(model.replies)}")
-    Prop.eq("#{held}", "#{want}")
+    try Prop.eq(got.reply.to_a, Bytes.concat(model.replies).to_a)
+    Prop.eq(held, want)
   end
 end
 
-# SET, GET, APPEND, GETDEL, SETNX, GETSET and STRLEN against a Map. 40 runs:
-# the step limit is between 100 and 130, and a third of it is the rule.
+# SET (with its six flavors of NX, XX and GET), GET, APPEND, GETDEL, SETNX,
+# GETSET and STRLEN against a Map. 100 runs: the step limit is between 400 and
+# 800 for this law and between 200 and 400 for the next, a third of the lower.
 def test_whole_value_commands_follow_a_map() -> Result[Void]
   return follows_the_model([0, 1, 2, 3, 4, 5, 7])
 end
 
 # SETRANGE and GETRANGE, with SET, GET and STRLEN around them, against a Map.
-# 40 runs, for the same reason.
+# 100 runs, for the same reason.
 def test_range_commands_follow_a_map() -> Result[Void]
   return follows_the_model([0, 6, 8, 1, 7, 6, 8])
 end

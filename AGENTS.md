@@ -73,8 +73,9 @@ tools/               check_purity.py and its tests (Python, standard library)
     `Prop.check(gen, Prop.Config(runs: N))`, in the file of its domain. The
     generated value must be JSON (`prop` prints a counterexample as JSON), so
     generate `List[Int]` for bytes (`byte_list`, `to_bytes` in
-    `test/support.agc`) and compare with `Prop.eq` on text. A test has a budget
-    of about 2.5 million steps. Raise `runs` until the test fails with
+    `test/support.agc`) and compare with `Prop.eq` on text or on `.to_a`:
+    interpolating `Bytes` prints `<Bytes N>`, only the length, so compare
+    `.to_a`. A test has a budget of about 2.5 million steps. Raise `runs` until the test fails with
     `RUNTIME-STEP-LIMIT`, then use a third of that number (at most a few
     hundred, so a test stays under a second), and write both numbers in the
     comment above the test. Laws over models (a `Map` or a `List`) are
