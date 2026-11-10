@@ -319,7 +319,7 @@ def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   end
 end
 
-# The thirteen operations as the requests they make (the tenth, a sweep, makes
+# The fifteen operations as the requests they make (the tenth, a sweep, makes
 # none): the clock moves by the second number first, and the key is one of three.
 # PEXPIRE takes -2 to 8 ms, so a time that is now or past deletes the key.
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -328,7 +328,7 @@ def argv_of(op: List[Int]) -> List[Bytes]
   ms = "#{xs[2] % 9 + 1}".bytes
   moved = "#{xs[2] % 11 - 2}".bytes
   value = to_bytes(op.drop(4))
-  return case xs[0] % 13
+  return case xs[0] % 15
     0 -> ["SET".bytes, key, value]
     1 -> ["SET".bytes, key, value, "PX".bytes, ms]
     2 -> ["PEXPIRE".bytes, key, moved]
@@ -340,6 +340,8 @@ def argv_of(op: List[Int]) -> List[Bytes]
     10 -> ["PEXPIRE".bytes, key, moved, option_of(xs[3])]
     11 -> ["DBSIZE".bytes]
     12 -> ["INFO".bytes, "keyspace".bytes]
+    13 -> ["RENAME".bytes, key, "k#{xs[3] % 3}".bytes]
+    14 -> ["FLUSHDB".bytes]
     _ -> ["DEL".bytes, key]
   end
 end
@@ -385,7 +387,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
   held = old.unwrap_or(Entry(value: [], due: none))
   state = model.state
   answer = "+OK\r\n".bytes
-  case xs[0] % 13
+  case xs[0] % 15
     0 -> state = state.put(key, Entry(value: value, due: none))
     1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
     2 ->
@@ -442,6 +444,17 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
 
     11 -> answer = whole(state.size)
     12 -> answer = keyspace_text(state)
+    13 ->
+      target = xs[3] % 3
+      answer = "-ERR no such key\r\n".bytes
+      if old.some? and target != key
+        state = state.put(target, held).delete(key)
+        answer = "+OK\r\n".bytes
+      elsif old.some?
+        answer = "+OK\r\n".bytes
+      end
+
+    14 -> state = {}
     _ ->
       state = state.delete(key)
       answer = whole(present(old))
@@ -483,7 +496,7 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   store = Requests.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
-    if ops[i].concat([0])[0] % 13 == 9
+    if ops[i].concat([0])[0] % 15 == 9
       store = Requests.expire_keys(store, times[i])
     else
       done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
@@ -496,7 +509,8 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
 end
 
 # SET, SET PX, PEXPIRE (also with NX, XX, GT, LT and a time that is now or
-# past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, DBSIZE and INFO keyspace against
+# past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, RENAME among the keys, FLUSHDB,
+# DBSIZE and INFO keyspace against
 # a Map of values and deadlines, with a clock that moves and a sweep that the
 # model repeats: the counts of DBSIZE and `expires` show an index that drifted,
 # and a key that a stale index entry dropped shows in a GET. 300 runs: the step
