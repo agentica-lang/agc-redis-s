@@ -58,8 +58,8 @@ def remaining(call: Call, in_ms: Bool, absolute: Bool) -> Outcome
   end
 end
 
-# The nearest second, found without `left + 500`: a client can set a deadline
-# near the largest Int, and a sum past it halts.
+# The nearest second, without `left + 500`: a deadline near the largest Int
+# would halt on the sum.
 def to_seconds(ms: Int) -> Int
   if ms % 1000 >= 500
     return ms / 1000 + 1
