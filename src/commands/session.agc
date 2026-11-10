@@ -6,7 +6,7 @@ import {Call, Change, Command, Effect} from "command"
 import Dispatch from "dispatch"
 import Writer from "../resp/writer"
 import {Session} from "../session/session"
-import {Databases, space_at, with_space} from "../store/databases"
+import {Databases, space_at, sweep, with_space} from "../store/databases"
 
 ## All the data the store task owns: the databases and the session of each
 ## connected client, by client id.
@@ -36,6 +36,13 @@ end
 ## A client left: its session goes.
 export def leave(store: Store, client_id: Int) -> Store
   return store.with(sessions: store.sessions.delete(client_id))
+end
+
+## The active expiry: the keys that are past their deadline are dropped. The
+## store task calls it on a timer; no reply depends on it, as an expired key
+## already counts as missing.
+export def expire_keys(store: Store, now_ms: Int) -> Store
+  return store.with(databases: sweep(store.databases, now_ms))
 end
 
 ## The last bytes before a connection closes on a protocol error.

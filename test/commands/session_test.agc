@@ -10,7 +10,7 @@ import {Value} from "../../src/store/value"
 # A handler that writes, so the keyspace that comes back can be checked. There
 # is no data command yet.
 def store_key(call: Call) -> Outcome
-  keyspace = put(call.keyspace, call.args[0], Value.Str(call.args[0]))
+  keyspace = put(call.keyspace, call.args[0], Value.Str(call.args[0]), 0)
   return write(call, keyspace, Reply.Simple("OK"))
 end
 

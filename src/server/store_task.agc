@@ -10,11 +10,14 @@ import Table from "../commands/table"
 import Clock from "clock"
 import {Message} from "message"
 
-POLL_MS = 1000
+# Redis runs its active expiry 10 times a second (hz 10); a sweep is free while
+# no key is due (`Keyspace.sweep`).
+SWEEP_MS = 100
 
 struct State
   store: Store
   table: Map[String, Command]
+  swept_at: Int = 0
 end
 
 ## Runs until `inbox` is closed.
@@ -25,7 +28,8 @@ end
 def take_all(inbox: Channel[Message], first: State) -> State
   state = first
   while true
-    case inbox.recv(POLL_MS)
+    state = swept(state)
+    case inbox.recv(SWEEP_MS)
       ok(message) -> state = handle(state, message)
       error(_) ->
         if inbox.closed? and inbox.empty?
@@ -35,6 +39,17 @@ def take_all(inbox: Channel[Message], first: State) -> State
   end
 
   return state
+end
+
+# The active expiry runs between messages, at most every `SWEEP_MS`, also under
+# a load that never lets the receive time out.
+def swept(state: State) -> State
+  now = Clock.now_ms()
+  if now - state.swept_at < SWEEP_MS
+    return state
+  end
+
+  return state.with(store: Requests.expire_keys(state.store, now), swept_at: now)
 end
 
 def handle(state: State, message: Message) -> State

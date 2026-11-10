@@ -101,7 +101,7 @@ export def settle(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -
       none -> nil
       some(value) ->
         if pending?(value)
-          joined = Keyspace.put(result.keyspace, key, Value.Str(joined_text(value)))
+          joined = Keyspace.put(result.keyspace, key, Value.Str(joined_text(value)), now_ms)
           result = Settled(keyspace: joined, changed: true)
         end
     end

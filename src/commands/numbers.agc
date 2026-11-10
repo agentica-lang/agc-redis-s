@@ -77,7 +77,11 @@ def add_to(call: Call, delta: Int) -> Outcome
       end
 
       total = old + delta
-      return write(call, Keyspace.put(call.keyspace, key, Value.Str("#{total}".bytes)), Reply.Integer(total))
+      return write(
+        call,
+        Keyspace.put(call.keyspace, key, Value.Str("#{total}".bytes), call.now_ms),
+        Reply.Integer(total),
+      )
   end
 end
 
@@ -100,6 +104,6 @@ def float_sum(call: Call, key: Bytes, total: Optional[LongDouble.Ext]) -> Outcom
     none -> return fail(call, "ERR increment would produce NaN or Infinity")
     some(sum) ->
       shown = LongDouble.format(sum)
-      return write(call, Keyspace.put(call.keyspace, key, Value.Str(shown)), Reply.Bulk(shown))
+      return write(call, Keyspace.put(call.keyspace, key, Value.Str(shown), call.now_ms), Reply.Bulk(shown))
   end
 end

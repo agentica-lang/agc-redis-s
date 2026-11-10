@@ -1,8 +1,11 @@
 ## String commands: GET, SET, GETSET, GETDEL, SETNX, MGET, MSET, MSETNX, APPEND,
-## STRLEN, GETRANGE and SETRANGE. Checked against Redis 7.2 t_string.c. The
-## expiry options of SET (EX, PX, EXAT, PXAT) and GETEX, SETEX and PSETEX come
-## with the expiry of keys; the INCR family is in numbers.agc. Only the string
-## type exists, so no handler answers WRONGTYPE yet.
+## STRLEN, GETRANGE, SETRANGE, GETEX, SETEX and PSETEX. Checked against Redis
+## 7.2 t_string.c. The INCR family is in numbers.agc. Only the string type
+## exists, so no handler answers WRONGTYPE yet.
+##
+## A write that stores a whole new value (SET, GETSET, SETNX, MSET, SETEX...)
+## drops the deadline of the key (`Keyspace.set`); one that changes the old
+## value (APPEND, SETRANGE, INCR) keeps it (`Keyspace.put`).
 
 import Args from "args"
 import {Call, Command, Outcome, fail, reply, write} from "command"
@@ -14,13 +17,19 @@ import {Value, joined_text, pending?, value_size} from "../store/value"
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 NOT_INT = "ERR value is not an integer or out of range"
 
-# SET key value [NX | XX] [GET] [KEEPTTL]. No key has a deadline yet, so
-# KEEPTTL changes nothing. With GET the answer is the old value, also when NX
-# or XX stops the write.
-struct SetOptions
+# SET key value [NX | XX] [GET] [KEEPTTL | EX s | PX ms | EXAT s | PXAT ms], and
+# GETEX key [PERSIST | EX | PX | EXAT | PXAT] with the same time words. With GET
+# the answer of SET is the old value, also when NX or XX stops the write.
+# `kind` is the time word, lowercase, or empty; a second time word of another
+# kind is a syntax error, one of the same kind replaces the first, as in Redis.
+struct Options
   nx: Bool = false
   xx: Bool = false
   get: Bool = false
+  keepttl: Bool = false
+  persist: Bool = false
+  kind: String = ""
+  time: Optional[Bytes] = none
   valid: Bool = true
 end
 
@@ -38,6 +47,9 @@ export def commands() -> List[Command]
     Command(name: "strlen", arity: 2, handler: &strlen),
     Command(name: "getrange", arity: 4, handler: &getrange),
     Command(name: "setrange", arity: 4, handler: &setrange),
+    Command(name: "getex", arity: -2, handler: &getex),
+    Command(name: "setex", arity: 4, handler: &setex),
+    Command(name: "psetex", arity: 4, handler: &psetex),
   ]
 end
 
@@ -93,46 +105,98 @@ def get(call: Call) -> Outcome
   return read_done(call, settled, bulk_or_nil(peek(call, settled, call.args[0])))
 end
 
-def set_options(words: List[Bytes]) -> SetOptions
-  options = SetOptions()
-  for word in words
-    case Args.lower(word)
-      "nx" ->
-        if options.xx
-          return SetOptions(valid: false)
-        end
-
-        options = options.with(nx: true)
-      "xx" ->
-        if options.nx
-          return SetOptions(valid: false)
-        end
-
-        options = options.with(xx: true)
-      "get" -> options = options.with(get: true)
-      "keepttl" -> nil
-      _ -> return SetOptions(valid: false)
+# `set` is true for SET (NX, XX, GET, KEEPTTL) and false for GETEX (PERSIST).
+def options(words: List[Bytes], set: Bool) -> Options
+  found = Options()
+  i = 0
+  while i < words.size
+    word = Args.lower(words[i])
+    timed = ["ex", "px", "exat", "pxat"].include?(word)
+    if timed and (found.keepttl or found.persist or (found.kind != "" and found.kind != word) or i + 1 == words.size)
+      return Options(valid: false)
     end
+
+    case word
+      "nx" ->
+        if not set or found.xx
+          return Options(valid: false)
+        end
+
+        found = found.with(nx: true)
+      "xx" ->
+        if not set or found.nx
+          return Options(valid: false)
+        end
+
+        found = found.with(xx: true)
+      "get" ->
+        if not set
+          return Options(valid: false)
+        end
+
+        found = found.with(get: true)
+      "keepttl" ->
+        if not set or found.kind != ""
+          return Options(valid: false)
+        end
+
+        found = found.with(keepttl: true)
+      "persist" ->
+        if set or found.kind != ""
+          return Options(valid: false)
+        end
+
+        found = found.with(persist: true)
+      _ ->
+        if not timed
+          return Options(valid: false)
+        end
+
+        found = found.with(kind: word, time: some(words[i + 1]))
+        i += 1
+    end
+
+    i += 1
   end
 
-  return options
+  return found
+end
+
+# The deadline the options ask for; `none` when they ask for none. The error is
+# the reply.
+def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
+  case found.time
+    none -> return ok(none)
+    some(text) ->
+      seconds = found.kind == "ex" or found.kind == "exat"
+      relative = found.kind == "ex" or found.kind == "px"
+      return ok(some(try Args.expire_ms(text, seconds, relative, call.now_ms, call.name)))
+  end
 end
 
 def set(call: Call) -> Outcome
-  options = set_options(call.args.drop(2))
-  if not options.valid
+  found = options(call.args.drop(2), true)
+  if not found.valid
     return fail(call, "ERR syntax error")
   end
 
+  case deadline_of(call, found)
+    error(text) -> return fail(call, text)
+    ok(deadline) -> return set_with(call, found, deadline)
+  end
+end
+
+def set_with(call: Call, found: Options, deadline: Optional[Int]) -> Outcome
+  key = call.args[0]
   old: Optional[Bytes] = none
-  if options.get
-    old = lookup(call, call.args[0])
+  if found.get
+    old = lookup(call, key)
   end
 
-  present = exists?(call, call.args[0])
-  skipped = (options.nx and present) or (options.xx and not present)
+  present = exists?(call, key)
+  skipped = (found.nx and present) or (found.xx and not present)
   answer = Reply.Simple("OK")
-  if options.get
+  if found.get
     answer = bulk_or_nil(old)
   elsif skipped
     answer = Reply.NilBulk
@@ -142,12 +206,86 @@ def set(call: Call) -> Outcome
     return reply(call, answer)
   end
 
-  return write(call, Keyspace.put(call.keyspace, call.args[0], Value.Str(call.args[1])), answer)
+  value = Value.Str(call.args[1])
+  stored = Keyspace.set(call.keyspace, key, value)
+  if found.keepttl
+    stored = Keyspace.put(call.keyspace, key, value, call.now_ms)
+  end
+
+  return write(call, with_deadline(stored, key, deadline), answer)
+end
+
+def with_deadline(keyspace: Keyspace.Keyspace, key: Bytes, deadline: Optional[Int]) -> Keyspace.Keyspace
+  case deadline
+    none -> return keyspace
+    some(when) -> return Keyspace.expire_at(keyspace, key, when)
+  end
+end
+
+# SETEX key seconds value and PSETEX key ms value: SET with EX or PX.
+def setex(call: Call) -> Outcome
+  return set_expiring(call, true)
+end
+
+def psetex(call: Call) -> Outcome
+  return set_expiring(call, false)
+end
+
+def set_expiring(call: Call, seconds: Bool) -> Outcome
+  case Args.expire_ms(call.args[1], seconds, true, call.now_ms, call.name)
+    error(text) -> return fail(call, text)
+    ok(deadline) ->
+      stored = Keyspace.set(call.keyspace, call.args[0], Value.Str(call.args[2]))
+      return write(call, Keyspace.expire_at(stored, call.args[0], deadline), Reply.Simple("OK"))
+  end
+end
+
+# A missing key answers nil before the time is checked. An absolute time that
+# has passed deletes the key, after the value is read.
+def getex(call: Call) -> Outcome
+  found = options(call.args.drop(1), false)
+  if not found.valid
+    return fail(call, "ERR syntax error")
+  end
+
+  key = call.args[0]
+  settled = settle(call, [key])
+  case peek(call, settled, key)
+    none -> return reply(call, Reply.NilBulk)
+    some(text) ->
+      case deadline_of(call, found)
+        error(failure) -> return fail(call, failure)
+        ok(deadline) -> return write(call, retimed(call, settled.keyspace, key, found, deadline), Reply.Bulk(text))
+      end
+  end
+end
+
+def retimed(
+  call: Call,
+  keyspace: Keyspace.Keyspace,
+  key: Bytes,
+  found: Options,
+  deadline: Optional[Int],
+) -> Keyspace.Keyspace
+  case deadline
+    none ->
+      if found.persist
+        return Keyspace.persist(keyspace, key)
+      end
+
+      return keyspace
+    some(when) ->
+      if (found.kind == "exat" or found.kind == "pxat") and when <= call.now_ms
+        return Keyspace.delete(keyspace, key)
+      end
+
+      return Keyspace.expire_at(keyspace, key, when)
+  end
 end
 
 def getset(call: Call) -> Outcome
   old = lookup(call, call.args[0])
-  return write(call, Keyspace.put(call.keyspace, call.args[0], Value.Str(call.args[1])), bulk_or_nil(old))
+  return write(call, Keyspace.set(call.keyspace, call.args[0], Value.Str(call.args[1])), bulk_or_nil(old))
 end
 
 def getdel(call: Call) -> Outcome
@@ -164,7 +302,7 @@ def setnx(call: Call) -> Outcome
     return reply(call, Reply.Integer(0))
   end
 
-  return write(call, Keyspace.put(call.keyspace, call.args[0], Value.Str(call.args[1])), Reply.Integer(1))
+  return write(call, Keyspace.set(call.keyspace, call.args[0], Value.Str(call.args[1])), Reply.Integer(1))
 end
 
 def mget(call: Call) -> Outcome
@@ -208,7 +346,7 @@ def put_pairs(keyspace: Keyspace.Keyspace, words: List[Bytes]) -> Keyspace.Keysp
   result = keyspace
   i = 0
   while i < words.size
-    result = Keyspace.put(result, words[i], Value.Str(words[i + 1]))
+    result = Keyspace.set(result, words[i], Value.Str(words[i + 1]))
     i += 2
   end
 
@@ -223,7 +361,8 @@ def append(call: Call) -> Outcome
   held = Keyspace.get(call.keyspace, key, call.now_ms)
   case Strings.append(held, more, Strings.MAX_BYTES)
     none -> return fail(call, TOO_BIG)
-    some(grown) -> return write(call, Keyspace.put(call.keyspace, key, grown), Reply.Integer(value_size(grown)))
+    some(grown) ->
+      return write(call, Keyspace.put(call.keyspace, key, grown, call.now_ms), Reply.Integer(value_size(grown)))
   end
 end
 
@@ -268,6 +407,6 @@ def setrange(call: Call) -> Outcome
 
       old = lookup(call, key).unwrap_or("".bytes)
       grown = Strings.set_range(old, offset, value)
-      return write(call, Keyspace.put(call.keyspace, key, Value.Str(grown)), Reply.Integer(grown.size))
+      return write(call, Keyspace.put(call.keyspace, key, Value.Str(grown), call.now_ms), Reply.Integer(grown.size))
   end
 end
