@@ -51,6 +51,21 @@ export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exch
   end
 end
 
+## For the laws over a model: requests already cut into words, run on a table
+## built once, without the reader (which has its laws). Much cheaper than
+## `exchange`, so a law can run more cases.
+export def run_requests(table: Map[String, Command], databases: Databases, argvs: List[List[Bytes]]) -> Exchange
+  store = Requests.join(Requests.start(databases), 1)
+  replies: List[Bytes] = []
+  for argv in argvs
+    done = Requests.run(table, store, 1, argv, 0)
+    store = done.store
+    replies = replies.push(done.reply)
+  end
+
+  return finish(store, replies, false)
+end
+
 ## A request of text words.
 export def words(list: List[String]) -> Bytes
   return request(list.map do |w| w.bytes end)

@@ -7,9 +7,10 @@ import {Command} from "command"
 import Config from "config"
 import Connection from "connection"
 import Server from "server"
+import Strings from "strings"
 
 export def build() -> Map[String, Command]
   rows = Connection.commands().concat(Client.commands())
-  rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands())
+  rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands()).concat(Strings.commands())
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
 end
