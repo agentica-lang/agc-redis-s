@@ -5,10 +5,17 @@ import Dock from "pkg/dock/dock"
 import {Command} from "../commands/command"
 import Requests from "../commands/session"
 import {Store} from "../commands/session"
-import {fresh} from "../store/databases"
-import Table from "../commands/table"
-import Clock from "clock"
 import {Message} from "message"
+
+## What the task works with; `main` builds it and the task builds nothing
+## (`Task.spawn` passes one argument, so the inbox is in it). The
+## clock is the only way the task learns the time, so a test passes its own.
+export struct Setup
+  inbox: Channel[Message]
+  store: Store
+  table: Map[String, Command]
+  now_ms: Fn[Int]
+end
 
 struct State
   store: Store
@@ -17,19 +24,24 @@ struct State
 end
 
 ## Runs until `inbox` is closed.
-export def run(inbox: Channel[Message]) -> Void
-  _ = take_all(inbox, State(store: Requests.start(fresh()), table: Table.build()))
+export def run(setup: Setup) -> Void
+  _ = serve(setup)
 end
 
-def take_all(inbox: Channel[Message], first: State) -> State
+## `run`, and the store it ends with.
+export def serve(setup: Setup) -> Store
+  return take_all(setup.inbox, setup.now_ms, State(store: setup.store, table: setup.table)).store
+end
+
+def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State
   state = first
   while true
     case inbox.recv(Requests.SWEEP_MS)
       ok(message) ->
-        now = Clock.now_ms()
+        now = clock.call()
         state = handle(swept(state, now), message, now)
       error(_) ->
-        state = swept(state, Clock.now_ms())
+        state = swept(state, clock.call())
         if inbox.closed? and inbox.empty?
           break
         end
