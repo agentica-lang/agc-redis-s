@@ -1,6 +1,6 @@
 ## Reading and writing the list at a key (Redis 7.2 t_list.c), over the `Deque`
 ## of store/value.agc. Every operation here costs one or a few `Map` steps, not
-## a copy of the list, except `slice` (one step per element returned).
+## a copy of the list; only `to_list` and `from_list` (LINSERT, LREM) walk it.
 ## A list is never empty: storing an empty one deletes the key, as Redis does
 ## when the last element is popped.
 
@@ -100,6 +100,26 @@ end
 ## The list with the element at `index` (inside the list) replaced.
 export def set(seq: Seq, index: Int, element: Bytes) -> Seq
   return Seq(items: seq.items.put(seq.head + index, element), head: seq.head)
+end
+
+## All the elements in order: O(n), for the commands that rebuild the list
+## (LINSERT, LREM), as they do in Redis.
+export def to_list(seq: Seq) -> List[Bytes]
+  picked: List[Bytes] = []
+  for offset in 0...length(seq)
+    picked = picked.push(seq.items.get(seq.head + offset, "".bytes))
+  end
+
+  return picked
+end
+
+export def from_list(elements: List[Bytes]) -> Seq
+  items: Map[Int, Bytes] = {}
+  for index in 0...elements.size
+    items = items.put(index, elements[index])
+  end
+
+  return Seq(items: items, head: 0)
 end
 
 ## The range `start` to `stop` of a list of `size` elements as Redis reads it
