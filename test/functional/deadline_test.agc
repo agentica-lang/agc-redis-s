@@ -337,7 +337,7 @@ def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   end
 end
 
-# The twenty-four operations as the requests they make (the tenth, a sweep, makes
+# The twenty-eight operations as the requests they make (the tenth, a sweep, makes
 # none): the clock moves by the second number first, and the key is one of three.
 # PEXPIRE takes -2 to 8 ms, so a time that is now or past deletes the key.
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -346,7 +346,7 @@ def argv_of(op: List[Int]) -> List[Bytes]
   ms = "#{xs[2] % 9 + 1}".bytes
   moved = "#{xs[2] % 11 - 2}".bytes
   value = to_bytes(op.drop(4))
-  return case xs[0] % 24
+  return case xs[0] % 28
     0 -> ["SET".bytes, key, value]
     1 -> ["SET".bytes, key, value, "PX".bytes, ms]
     2 -> ["PEXPIRE".bytes, key, moved]
@@ -369,6 +369,10 @@ def argv_of(op: List[Int]) -> List[Bytes]
     21 -> ["LPUSH".bytes, key, value]
     22 -> ["LPOP".bytes, key]
     23 -> ["RPOP".bytes, key]
+    24 -> ["LSET".bytes, key, "#{xs[3] % 5 - 2}".bytes, value]
+    25 -> ["LTRIM".bytes, key, "0".bytes, "#{xs[3] % 3}".bytes]
+    26 -> ["LPOP".bytes, key, "#{xs[3] % 3 + 1}".bytes]
+    27 -> ["RPOP".bytes, key, "#{xs[3] % 3 + 1}".bytes]
     _ -> ["DEL".bytes, key]
   end
 end
@@ -414,7 +418,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
   held = old.unwrap_or(Entry(value: [], due: none))
   state = model.state
   answer = "+OK\r\n".bytes
-  case xs[0] % 24
+  case xs[0] % 28
     0 -> state = state.put(key, Entry(value: value, due: none))
     1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
     2 ->
@@ -551,11 +555,27 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
       end
 
     22 ->
-      done = popped(state, key, old, held, true)
+      done = popped(state, key, old, held, true, 1, false)
       state = done.state
       answer = done.answer
     23 ->
-      done = popped(state, key, old, held, false)
+      done = popped(state, key, old, held, false, 1, false)
+      state = done.state
+      answer = done.answer
+    26 ->
+      done = popped(state, key, old, held, true, xs[3] % 3 + 1, true)
+      state = done.state
+      answer = done.answer
+    27 ->
+      done = popped(state, key, old, held, false, xs[3] % 3 + 1, true)
+      state = done.state
+      answer = done.answer
+    24 ->
+      done = assigned(state, key, old, held, xs[3] % 5 - 2, value)
+      state = done.state
+      answer = done.answer
+    25 ->
+      done = trimmed(state, key, old, held, xs[3] % 3)
       state = done.state
       answer = done.answer
     21 ->
@@ -576,10 +596,24 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
   return Model(state: state, replies: model.replies.push(answer))
 end
 
-# LPOP or RPOP of one element: nil for a missing key, WRONGTYPE for another
-# type, and the key goes (with its deadline) with its last element.
-def popped(state: Map[Int, Entry], key: Int, old: Optional[Entry], held: Entry, front: Bool) -> Popped
+# LPOP or RPOP of one element, or of up to `count` with a count (an array from
+# the end that was popped): nil (a null array with a count) for a missing key,
+# WRONGTYPE for another type, and the key goes (with its deadline) with its
+# last element.
+def popped(
+  state: Map[Int, Entry],
+  key: Int,
+  old: Optional[Entry],
+  held: Entry,
+  front: Bool,
+  count: Int,
+  counted: Bool,
+) -> Popped
   if old.none?
+    if counted
+      return Popped(state: state, answer: "*-1\r\n".bytes)
+    end
+
     return Popped(state: state, answer: "$-1\r\n".bytes)
   end
 
@@ -588,18 +622,75 @@ def popped(state: Map[Int, Entry], key: Int, old: Optional[Entry], held: Entry, 
   end
 
   items = held.items.unwrap_or([])
-  picked = items[items.size - 1]
-  rest = items.take(items.size - 1)
+  taken = items.size
+  if count < taken
+    taken = count
+  end
+
+  picked = items.drop(items.size - taken).reverse
+  rest = items.take(items.size - taken)
   if front
-    picked = items[0]
-    rest = items.drop(1)
+    picked = items.take(taken)
+    rest = items.drop(taken)
+  end
+
+  answer = bulk(picked[0])
+  if counted
+    answer = Bytes.concat(["*#{picked.size}\r\n".bytes].concat(picked.map do |one| bulk(one) end))
   end
 
   if rest.empty?
-    return Popped(state: state.delete(key), answer: bulk(picked))
+    return Popped(state: state.delete(key), answer: answer)
   end
 
-  return Popped(state: state.put(key, held.with(items: some(rest))), answer: bulk(picked))
+  return Popped(state: state.put(key, held.with(items: some(rest))), answer: answer)
+end
+
+# LSET keeps the deadline: no such key, WRONGTYPE, or an index outside the list
+# answer an error; otherwise the element is replaced.
+def assigned(
+  state: Map[Int, Entry],
+  key: Int,
+  old: Optional[Entry],
+  held: Entry,
+  index: Int,
+  value: List[Int],
+) -> Popped
+  if old.none?
+    return Popped(state: state, answer: "-ERR no such key\r\n".bytes)
+  end
+
+  if held.items.none?
+    return Popped(state: state, answer: WRONGTYPE)
+  end
+
+  items = held.items.unwrap_or([])
+  position = index
+  if index < 0
+    position = items.size + index
+  end
+
+  if position < 0 or position >= items.size
+    return Popped(state: state, answer: "-ERR index out of range\r\n".bytes)
+  end
+
+  changed = items.take(position).push(value).concat(items.drop(position + 1))
+  return Popped(state: state.put(key, held.with(items: some(changed))), answer: "+OK\r\n".bytes)
+end
+
+# LTRIM 0 stop on a live list keeps the first stop + 1 elements (never none, so
+# the key stays) and its deadline; a missing key answers OK.
+def trimmed(state: Map[Int, Entry], key: Int, old: Optional[Entry], held: Entry, stop: Int) -> Popped
+  if old.some? and held.items.none?
+    return Popped(state: state, answer: WRONGTYPE)
+  end
+
+  if old.none?
+    return Popped(state: state, answer: "+OK\r\n".bytes)
+  end
+
+  items = held.items.unwrap_or([]).take(stop + 1)
+  return Popped(state: state.put(key, held.with(items: some(items))), answer: "+OK\r\n".bytes)
 end
 
 # What a sweep at `now` leaves: the keys that are not past their deadline.
@@ -635,7 +726,7 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   store = Requests.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
-    if ops[i].concat([0])[0] % 24 == 9
+    if ops[i].concat([0])[0] % 28 == 9
       store = Requests.expire_keys(store, times[i])
     else
       done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
@@ -648,8 +739,9 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
 end
 
 # HSET, HDEL, HLEN and TYPE join them: a hash keeps its deadline, goes with its
-# last field, and answers WRONGTYPE to GET and APPEND. RPUSH, LPUSH, LPOP, RPOP and LLEN
-# add the list the same way: it keeps its deadline, goes with its last element,
+# last field, and answers WRONGTYPE to GET and APPEND. RPUSH, LPUSH, LPOP and
+# RPOP (also with a count), LSET, LTRIM and LLEN add the list the same way: it keeps its deadline, goes with its
+# last element,
 # and answers WRONGTYPE both ways.
 # SET, SET PX, PEXPIRE (also with NX, XX, GT, LT and a time that is now or
 # past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, RENAME among the keys, FLUSHDB,

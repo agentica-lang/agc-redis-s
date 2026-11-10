@@ -187,8 +187,8 @@ def argv_of(op: List[Int]) -> List[Bytes]
     2 -> ["LPUSHX".bytes, "k".bytes, value]
     3 -> ["RPUSHX".bytes, "k".bytes, value]
     4 -> ["LLEN".bytes, "k".bytes]
-    5 -> ["LINDEX".bytes, "k".bytes, "#{op[1] % 13 - 6}".bytes]
-    _ -> ["LRANGE".bytes, "k".bytes, "#{op[1] % 13 - 6}".bytes, "#{op[2] % 13 - 6}".bytes]
+    5 -> ["LINDEX".bytes, "k".bytes, "#{op[1] % 31 - 15}".bytes]
+    _ -> ["LRANGE".bytes, "k".bytes, "#{op[1] % 31 - 15}".bytes, "#{op[2] % 31 - 15}".bytes]
   end
 end
 
@@ -222,8 +222,8 @@ def modeled(ops: List[List[Int]]) -> String
         end
 
       4 -> out = "#{out}:#{held.size}\r\n"
-      5 -> out = "#{out}#{index_reply(held, op[1] % 13 - 6)}"
-      _ -> out = "#{out}#{range_reply(held, op[1] % 13 - 6, op[2] % 13 - 6)}"
+      5 -> out = "#{out}#{index_reply(held, op[1] % 31 - 15)}"
+      _ -> out = "#{out}#{range_reply(held, op[1] % 31 - 15, op[2] % 31 - 15)}"
     end
   end
 
