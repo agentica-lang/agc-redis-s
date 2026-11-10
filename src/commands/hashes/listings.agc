@@ -1,0 +1,48 @@
+## HGETALL, HKEYS and HVALS (t_hash.c genericHgetallCommand). RESP2 answers a
+## map as a flat array. Each call reads the whole hash: O(n).
+
+import {Call, Command, Outcome, reply, wrong_type} from "../command"
+import {Reply} from "../../resp/reply"
+import Hashes from "../../store/hashes"
+import {Held} from "../../store/hashes"
+
+export def commands() -> List[Command]
+  return [
+    Command(name: "hgetall", arity: 2, handler: &hgetall),
+    Command(name: "hkeys", arity: 2, handler: &hkeys),
+    Command(name: "hvals", arity: 2, handler: &hvals),
+  ]
+end
+
+# RESP2 answers a map as a flat array: field, value, field, value.
+def hgetall(call: Call) -> Outcome
+  return listing(call, true, true)
+end
+
+def hkeys(call: Call) -> Outcome
+  return listing(call, true, false)
+end
+
+def hvals(call: Call) -> Outcome
+  return listing(call, false, true)
+end
+
+def listing(call: Call, names: Bool, values: Bool) -> Outcome
+  case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> return reply(call, Reply.Array([]))
+    Held.Fields(fields) ->
+      items: List[Reply] = []
+      for name in fields.keys
+        if names
+          items = items.push(Reply.Bulk(name))
+        end
+
+        if values
+          items = items.push(Reply.Bulk(fields.get(name, "".bytes)))
+        end
+      end
+
+      return reply(call, Reply.Array(items))
+  end
+end
