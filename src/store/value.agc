@@ -14,12 +14,20 @@
 ## come in no order, so no client can rely on one). A hash is never empty:
 ## deleting its last field deletes the key (store/hashes.agc).
 ##
+## A list is a `Deque`: the elements by position number, and the number of the
+## first one (`head`), so the element at index i is `items[head + i]`. A push at
+## the head takes `head - 1` (the number may go negative), a push at the tail
+## takes `head + size`, and a pop removes the end's number: both ends cost one
+## `Map` step, as does an element by index. A list is never empty: removing its
+## last element deletes the key (store/lists.agc).
+##
 ## The string helpers below answer for a string only; a command checks the
 ## variant first (`string?`) and answers WRONGTYPE for the others.
 export enum Value
   Str(Bytes)
   Appended(List[Bytes], Int)
   Hash(Map[Bytes, Bytes])
+  Deque(Map[Int, Bytes], Int)
 end
 
 ## The name `TYPE` and `SCAN ... TYPE` use.
@@ -28,6 +36,7 @@ export def type_name(value: Value) -> String
     Value.Str(_) -> return "string"
     Value.Appended(_, _) -> return "string"
     Value.Hash(_) -> return "hash"
+    Value.Deque(_, _) -> return "list"
   end
 end
 
@@ -42,6 +51,7 @@ export def joined_text(value: Value) -> Bytes
     Value.Str(bytes) -> return bytes
     Value.Appended(pieces, _) -> return Bytes.concat(pieces)
     Value.Hash(_) -> return "".bytes
+    Value.Deque(_, _) -> return "".bytes
   end
 end
 
@@ -51,6 +61,7 @@ export def value_size(value: Value) -> Int
     Value.Str(bytes) -> return bytes.size
     Value.Appended(_, total) -> return total
     Value.Hash(_) -> return 0
+    Value.Deque(_, _) -> return 0
   end
 end
 
@@ -70,6 +81,7 @@ export def with_more(value: Value, more: Bytes) -> Value
       return Value.Appended([bytes, more], bytes.size + more.size)
     Value.Appended(pieces, total) -> return Value.Appended(pieces.push(more), total + more.size)
     Value.Hash(_) -> return value
+    Value.Deque(_, _) -> return value
   end
 end
 
@@ -79,5 +91,6 @@ export def pending?(value: Value) -> Bool
     Value.Str(_) -> return false
     Value.Appended(_, _) -> return true
     Value.Hash(_) -> return false
+    Value.Deque(_, _) -> return false
   end
 end
