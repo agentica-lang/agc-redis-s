@@ -23,7 +23,9 @@ end
 # inbox it sweeps once, and a key past its deadline is dropped only when the
 # fake time has passed SWEEP_MS since the last sweep (which starts at 0).
 def test_the_sweep_follows_the_given_clock() -> Result[Void]
-  seeded = ran(ran(Requests.start(fresh()), ["SET", "a", "1", "PX", "5"]), ["SET", "b", "1"])
+  empty = Requests.start(fresh())
+  with_a = ran(empty, ["SET", "a", "1", "PX", "5"])
+  seeded = ran(with_a, ["SET", "b", "1"])
   inbox: Channel[Message] = Channel.new(4)
   inbox.close
   early = StoreTask.serve(StoreTask.Setup(inbox: inbox, store: seeded, table: Table.build(), now_ms: &fixed_early))
