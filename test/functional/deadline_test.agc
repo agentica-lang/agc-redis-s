@@ -15,11 +15,12 @@ NOT_INT = "-ERR value is not an integer or out of range\r\n"
 
 # One key of the model: its value and its deadline, if it has one.
 # A key holds a string (`value`) or, when `fields` is some, a hash from the
-# field number to its bytes.
+# field number to its bytes, or, when `items` is some, a list of values.
 struct Entry
   value: List[Int]
   due: Optional[Int]
   fields: Optional[Map[Int, List[Int]]] = none
+  items: Optional[List[List[Int]]] = none
 end
 
 struct Model
@@ -331,7 +332,7 @@ def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   end
 end
 
-# The nineteen operations as the requests they make (the tenth, a sweep, makes
+# The twenty-two operations as the requests they make (the tenth, a sweep, makes
 # none): the clock moves by the second number first, and the key is one of three.
 # PEXPIRE takes -2 to 8 ms, so a time that is now or past deletes the key.
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -340,7 +341,7 @@ def argv_of(op: List[Int]) -> List[Bytes]
   ms = "#{xs[2] % 9 + 1}".bytes
   moved = "#{xs[2] % 11 - 2}".bytes
   value = to_bytes(op.drop(4))
-  return case xs[0] % 19
+  return case xs[0] % 22
     0 -> ["SET".bytes, key, value]
     1 -> ["SET".bytes, key, value, "PX".bytes, ms]
     2 -> ["PEXPIRE".bytes, key, moved]
@@ -358,6 +359,9 @@ def argv_of(op: List[Int]) -> List[Bytes]
     16 -> ["HDEL".bytes, key, "f#{xs[3] % 3}".bytes]
     17 -> ["HLEN".bytes, key]
     18 -> ["TYPE".bytes, key]
+    19 -> ["RPUSH".bytes, key, value]
+    20 -> ["LLEN".bytes, key]
+    21 -> ["LPUSH".bytes, key, value]
     _ -> ["DEL".bytes, key]
   end
 end
@@ -403,7 +407,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
   held = old.unwrap_or(Entry(value: [], due: none))
   state = model.state
   answer = "+OK\r\n".bytes
-  case xs[0] % 19
+  case xs[0] % 22
     0 -> state = state.put(key, Entry(value: value, due: none))
     1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
     2 ->
@@ -430,7 +434,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
         answer = bulk(held.value)
       end
 
-      if held.fields.some?
+      if held.fields.some? or held.items.some?
         answer = WRONGTYPE
       end
 
@@ -446,7 +450,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
 
     6 -> answer = whole(present(old))
     7 ->
-      if held.fields.some?
+      if held.fields.some? or held.items.some?
         answer = WRONGTYPE
       else
         state = state.put(key, held.with(value: held.value.concat(value)))
@@ -519,6 +523,36 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
         answer = "+hash\r\n".bytes
       end
 
+      if held.items.some?
+        answer = "+list\r\n".bytes
+      end
+
+    19 ->
+      if old.some? and held.items.none?
+        answer = WRONGTYPE
+      else
+        items = held.items.unwrap_or([])
+        grown = items.push(value)
+        answer = whole(grown.size)
+        state = state.put(key, held.with(items: some(grown)))
+      end
+
+    20 ->
+      answer = whole(held.items.unwrap_or([]).size)
+      if old.some? and held.items.none?
+        answer = WRONGTYPE
+      end
+
+    21 ->
+      if old.some? and held.items.none?
+        answer = WRONGTYPE
+      else
+        items = held.items.unwrap_or([])
+        grown = [value].concat(items)
+        answer = whole(grown.size)
+        state = state.put(key, held.with(items: some(grown)))
+      end
+
     _ ->
       state = state.delete(key)
       answer = whole(present(old))
@@ -560,7 +594,7 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   store = Requests.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
-    if ops[i].concat([0])[0] % 19 == 9
+    if ops[i].concat([0])[0] % 22 == 9
       store = Requests.expire_keys(store, times[i])
     else
       done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
@@ -573,7 +607,8 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
 end
 
 # HSET, HDEL, HLEN and TYPE join them: a hash keeps its deadline, goes with its
-# last field, and answers WRONGTYPE to GET and APPEND.
+# last field, and answers WRONGTYPE to GET and APPEND. RPUSH, LPUSH and LLEN add
+# the list the same way: it keeps its deadline and answers WRONGTYPE both ways.
 # SET, SET PX, PEXPIRE (also with NX, XX, GT, LT and a time that is now or
 # past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, RENAME among the keys, FLUSHDB,
 # DBSIZE and INFO keyspace against
