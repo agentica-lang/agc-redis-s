@@ -4,6 +4,8 @@
 ## twice. A request is an array of bulk strings or an inline line (`redis-cli`,
 ## telnet).
 
+import Integer from "integer"
+
 MAX_BULK = 536_870_912
 # A deliberate memory guard, stricter than Redis 7 (which allows INT_MAX items).
 MAX_ARRAY = 1_048_576
@@ -16,7 +18,6 @@ LF = 10
 CR = 13
 DOLLAR = 36
 STAR = 42
-MINUS = 45
 ZERO = 48
 NINE = 57
 DQUOTE = 34
@@ -117,46 +118,6 @@ def line_text(buf: Bytes, from: Int, lf: Int) -> Bytes
   end
 
   return buf.slice(from, stop - from)
-end
-
-# The numbers of Redis's string2ll: an optional minus, no plus, no space, no
-# underscore, and no leading zero ("0" alone is fine, "-0" and "03" are not).
-def parse_int(text: Bytes) -> Optional[Int]
-  if text == "0".bytes
-    return some(0)
-  end
-
-  first = 0
-  if text.size > 0 and text[0] == MINUS
-    first = 1
-  end
-
-  if first == text.size or text[first] == ZERO or not digits_from?(text, first)
-    return none
-  end
-
-  case String.from_bytes(text)
-    error(_) -> return none
-    ok(s) ->
-      case s.to_i
-        ok(n) -> return some(n)
-        error(_) -> return none
-      end
-  end
-end
-
-# Whether every byte from `first` on is a digit; no list of the bytes is built.
-def digits_from?(text: Bytes, first: Int) -> Bool
-  i = first
-  while i < text.size
-    if text[i] < ZERO or text[i] > NINE
-      return false
-    end
-
-    i += 1
-  end
-
-  return true
 end
 
 def read_inline(buf: Bytes, from: Partial) -> Read
@@ -354,7 +315,7 @@ def read_array(buf: Bytes, from: Partial) -> Read
   case find_line(buf, from, "Protocol error: too big mbulk count string")
     Line.Stop(read) -> return read
     Line.Found(lf) ->
-      case parse_int(line_text(buf, from.at + 1, lf))
+      case Integer.parse(line_text(buf, from.at + 1, lf))
         none -> return Read.Invalid("Protocol error: invalid multibulk length")
         some(n) ->
           if n > MAX_ARRAY
@@ -412,7 +373,7 @@ def read_bulk(buf: Bytes, from: Int, scanned: Int, held: Int) -> Bulk
     Line.Stop(Read.Incomplete(p)) -> return Bulk.More(p.need, p.scanned, true)
     Line.Stop(read) -> return Bulk.Fail(read)
     Line.Found(lf) ->
-      case parse_int(line_text(buf, from + 1, lf))
+      case Integer.parse(line_text(buf, from + 1, lf))
         none -> return Bulk.Fail(Read.Invalid("Protocol error: invalid bulk length"))
         some(n) -> return bulk_slice(buf, from, n, lf + 1, held)
       end

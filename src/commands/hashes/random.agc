@@ -2,12 +2,13 @@
 ## call reads the hash and costs O(n); a negative count costs O(count).
 
 import Args from "../args"
+import Errors from "../errors"
+import Integer from "../../resp/integer"
 import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-NOT_INT = "ERR value is not an integer or out of range"
 # A reply of more items than this would pass the output cap of a client (dock
 # drops it at 8 MiB, and an item takes 6 bytes at least, `$0\r\n\r\n`; with
 # WITHVALUES a count makes two items): refused up front, the only difference
@@ -27,15 +28,15 @@ def hrandfield(call: Call) -> Outcome
     return random_one(call)
   end
 
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(count) ->
       if count == INT_MIN
-        return fail(call, "ERR value is out of range, value must between -9223372036854775807 and 9223372036854775807")
+        return fail(call, Errors.LONG_RANGE)
       end
 
       if call.args.size > 3 or (call.args.size == 3 and Args.lower(call.args[2]) != "withvalues")
-        return fail(call, "ERR syntax error")
+        return fail(call, Errors.SYNTAX)
       end
 
       if call.args.size == 3 and (count < -INT_MAX / 2 or count > INT_MAX / 2)

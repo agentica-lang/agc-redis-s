@@ -6,13 +6,12 @@
 ## keeps its deadline and a new one has none.
 
 import Args from "../args"
+import Errors from "../errors"
 import Replies from "replies"
 import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
-
-SYNTAX = "ERR syntax error"
 
 export def commands() -> List[Command]
   return [
@@ -42,7 +41,7 @@ def end_of(word: Bytes) -> Result[End]
   case Args.lower(word)
     "left" -> return ok(End.Head)
     "right" -> return ok(End.Tail)
-    _ -> return error(SYNTAX)
+    _ -> return error(Errors.SYNTAX)
   end
 end
 
@@ -85,7 +84,7 @@ def lmpop(call: Call) -> Outcome
     error(text) -> return fail(call, text)
     ok(numkeys) ->
       if numkeys >= call.args.size - 1
-        return fail(call, SYNTAX)
+        return fail(call, Errors.SYNTAX)
       end
 
       case end_of(call.args[numkeys + 1])
@@ -106,7 +105,7 @@ def count_of(words: List[Bytes]) -> Result[Int]
   end
 
   if words.size != 2 or Args.lower(words[0]) != "count"
-    return error(SYNTAX)
+    return error(Errors.SYNTAX)
   end
 
   return Args.at_least_one(words[1], "ERR count should be greater than 0")

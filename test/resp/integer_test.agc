@@ -1,8 +1,8 @@
-import Args from "../../src/commands/args"
+import Integer from "../../src/resp/integer"
 import Prop from "pkg/prop/prop"
 
 def parsed(text: String) -> Optional[Int]
-  return Args.parse_int(text.bytes)
+  return Integer.parse(text.bytes)
 end
 
 # What Redis's string2ll refuses, and the edges of the 64-bit range it accepts.

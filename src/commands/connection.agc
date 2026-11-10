@@ -3,6 +3,8 @@
 ## Checked against Redis 7.2 networking.c (helloCommand) and db.c (selectCommand).
 
 import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {
   Call, Command, Outcome, fail, fail_bytes, reply, reply_and_close, reply_with_session, wrong_arity,
 } from "command"
@@ -47,7 +49,7 @@ end
 def hello(call: Call) -> Outcome
   rest = call.args
   if not rest.empty?
-    case Args.parse_int(rest[0])
+    case Integer.parse(rest[0])
       none -> return fail(call, "ERR Protocol version is not an integer or out of range")
       some(version) ->
         if version != 2
@@ -76,7 +78,7 @@ def hello_options(call: Call, args: List[Bytes]) -> Outcome
       i += 3
     elsif option == "setname" and more >= 1
       if not Args.plain_word?(args[i + 1])
-        return fail(call, "ERR Client names cannot contain spaces, newlines or special characters.")
+        return fail(call, Errors.BAD_CLIENT_NAME)
       end
 
       name = Args.present(args[i + 1])
@@ -114,15 +116,15 @@ end
 
 # The id is read as an `int`: a number outside it has its own error.
 def select(call: Call) -> Outcome
-  case Args.parse_int(call.args[0])
-    none -> return fail(call, "ERR value is not an integer or out of range")
+  case Integer.parse(call.args[0])
+    none -> return fail(call, Errors.NOT_INT)
     some(id) ->
       if id < -2_147_483_648 or id > 2_147_483_647
-        return fail(call, "ERR value is out of range, value must between -2147483648 and 2147483647")
+        return fail(call, Errors.INT_RANGE)
       end
 
       if id < 0 or id >= Databases.COUNT
-        return fail(call, "ERR DB index is out of range")
+        return fail(call, Errors.DB_RANGE)
       end
 
       return reply_with_session(call, Reply.Simple("OK"), call.session.with(db: id))

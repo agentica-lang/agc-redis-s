@@ -3,6 +3,8 @@
 ## catClientInfoString).
 
 import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {Call, Command, Outcome, container, fail, fail_bytes, reply, reply_with_session} from "command"
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
@@ -25,7 +27,7 @@ end
 # An empty name removes the name.
 def setname(call: Call) -> Outcome
   if not Args.plain_word?(call.args[0])
-    return fail(call, "ERR Client names cannot contain spaces, newlines or special characters.")
+    return fail(call, Errors.BAD_CLIENT_NAME)
   end
 
   return reply_with_session(call, Reply.Simple("OK"), call.session.with(name: Args.present(call.args[0])))
@@ -76,7 +78,7 @@ def list(call: Call) -> Outcome
     return list_ids(call, args.drop(1))
   end
 
-  return fail(call, "ERR syntax error")
+  return fail(call, Errors.SYNTAX)
 end
 
 # Every client of this server is a normal one.
@@ -95,7 +97,7 @@ end
 def list_ids(call: Call, ids: List[Bytes]) -> Outcome
   lines: List[Bytes] = []
   for text in ids
-    case Args.parse_int(text)
+    case Integer.parse(text)
       none -> return fail(call, "ERR Invalid client ID")
       some(n) ->
         if n == call.client_id

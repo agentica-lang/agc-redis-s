@@ -4,6 +4,7 @@
 ## configSetCommand) and redis-benchmark.c, which asks for `save` and `appendonly`.
 
 import Args from "args"
+import Errors from "errors"
 import {Call, Command, Outcome, container, fail, fail_bytes, reply} from "command"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
@@ -77,7 +78,7 @@ end
 # since this server keeps no state for it.
 def change(call: Call) -> Outcome
   if call.args.size % 2 == 1
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   i = 0
