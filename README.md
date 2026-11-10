@@ -24,13 +24,12 @@ agentica agc_redis_s.agc --port 6379
 redis-cli ping
 ```
 
-`--port 0` picks a free port. (The server arrives in the second PR of issue
-#1.)
+`--port 0` picks a free port and prints it on the first line.
 
 ## Develop
 
 ```text
-make check fmt-check test
+make check fmt-check test integration
 ```
 
 Read `AGENTS.md` for the layout and how to add a command.
@@ -39,7 +38,7 @@ Read `AGENTS.md` for the layout and how to add a command.
 
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Layout, CI, PING and ECHO | in progress |
+| 0 | Layout, CI, PING and ECHO | done |
 | 1 | RESP2 reader and writer | planned |
 | 2 | Connection and server commands | planned |
 | 3 | Strings | planned |

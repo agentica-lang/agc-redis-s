@@ -7,21 +7,26 @@ is in the GitHub issues, one milestone per release.
 ## Map
 
 ```text
-agc_redis_s.agc      main: options, start the server (next PR of issue #1)
+agc_redis_s.agc      main: options, start the server
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
-                     types), writer.agc (reply to bytes); the reader (bytes
-                     to a request) joins them in the next PR
+                     types), writer.agc (reply to bytes), reader.agc
+                     (bytes to a request, resumable at an offset)
   store/             PURE. The data: value.agc (one variant per data type),
                      keyspace.agc (key to value); one file per data type
                      (hash.agc, list.agc, set.agc, zset.agc) when it lands
   commands/          PURE. command.agc (Command, Call, Outcome), table.agc
                      (all rows), dispatch.agc (name, arity, call the
                      handler), one file per command family
-  server/            I/O SHELL (next PR). The only folder that opens
-                     sockets, spawns tasks or reads the clock
+  server/            I/O SHELL. The only folder that opens sockets,
+                     spawns tasks or reads the clock: config.agc (options),
+                     accept.agc (accept loop), connection.agc (reader task),
+                     writer.agc (writer task), store_task.agc (owner of
+                     the data), message.agc (what tasks send each other),
+                     clock.agc
 test/                unit tests (`*_test.agc`), the same path as the source
-integration/         Python peer, standard library only (next PR)
+integration/         Python peer, standard library only: raw socket, RESP
+                     by hand, one server process per test class
 ```
 
 ## Rules
@@ -47,7 +52,8 @@ integration/         Python peer, standard library only (next PR)
 
 - `make check` (purity, `agentica check`, lint), `make fmt-check`,
   `make test` (unit tests). `agentica fmt src test` fixes formatting.
-- `make integration` starts the server and runs `integration/` (next PR).
+- `make integration` runs `integration/` (`python3 -m unittest`); the tests
+  start the server themselves on port 0.
 - The Agentica version is pinned in `.github/workflows/ci.yml`.
 
 ## How a command travels
