@@ -4,6 +4,7 @@ import {Store} from "../../src/commands/session"
 import Table from "../../src/commands/table"
 import {Reply} from "../../src/resp/reply"
 import {fresh, space_at} from "../../src/store/databases"
+import Generator from "../../src/store/generator"
 import {put, size} from "../../src/store/keyspace"
 import {Value} from "../../src/store/value"
 
@@ -40,4 +41,14 @@ def test_sweep_is_due_by_time_and_after_a_clock_step_back() -> Result[Void]
   try Test.eq(Requests.sweep_due?(1000, 1100), true)
   try Test.eq(Requests.sweep_due?(1000, 999), true)
   return Test.eq(Requests.sweep_due?(1000, 1000), false)
+end
+
+# A request takes two steps of the generator, `Call.random` having both: the
+# next request does not see the numbers of the one before.
+def test_a_request_advances_the_seed_by_two_steps() -> Result[Void]
+  started = Requests.start(fresh())
+  state = Requests.join(started, 1)
+  done = Requests.run(Table.build(), state, 1, ["PING".bytes], 7)
+  first = Generator.advance(state.seed, 7)
+  return Test.eq(done.store.seed, Generator.advance(first, 7))
 end
