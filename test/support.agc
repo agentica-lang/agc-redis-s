@@ -92,7 +92,7 @@ end
 
 ## One command against a table of the test's own, for the dispatch rules.
 export def run_in(table: Map[String, Command], name: String, args: List[String]) -> Outcome
-  call = Call(keyspace: Keyspace(), session: Session(), args: args.map do |a| a.bytes end)
+  call = Call(keyspace: Keyspace(), databases: fresh(), session: Session(), args: args.map do |a| a.bytes end)
   return Dispatch.execute(table, name.bytes, call)
 end
 

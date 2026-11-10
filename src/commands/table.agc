@@ -1,11 +1,15 @@
 ## The command table: every family's rows, by lowercase name. A new family is
 ## one import and one line here.
 
+import Catalog from "catalog"
 import Client from "client"
 import {Command} from "command"
+import Config from "config"
 import Connection from "connection"
+import Server from "server"
 
 export def build() -> Map[String, Command]
   rows = Connection.commands().concat(Client.commands())
+  rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands())
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
 end

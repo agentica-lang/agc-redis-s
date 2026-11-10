@@ -6,6 +6,10 @@ Every folder under src/ except src/server is pure. A file there may not
   (b) use an impure builtin name in code (comments and the text of string
       literals are ignored; the code inside "#{...}" is checked).
 
+One more rule rides along: `Outcome(` is called only in src/commands/command.agc,
+so a handler answers with the helpers there, and only `write` and `write_all`
+can change data.
+
 A heredoc (`<<~`) is refused: its text would hide code from (b).
 Standard library only.
 """
@@ -25,6 +29,8 @@ IMPURE_SUBTREE = "src/server"
 
 NAME_RE = re.compile(r"\b(%s)\b" % "|".join(IMPURE_NAMES))
 HEREDOC_RE = re.compile(r"<<~")
+OUTCOME_RE = re.compile(r"\bOutcome\(")
+OUTCOME_HOME = os.path.join("src", "commands", "command.agc")
 FROM_RE = re.compile(r'\bfrom\s+"([^"]*)"')
 
 
@@ -96,6 +102,8 @@ def check(root):
             if problem:
                 problems.append("%s: %s" % (shown, problem))
         for number, line in enumerate(TOKEN_RE.sub(blank, text).splitlines(), 1):
+            if OUTCOME_RE.search(line) and shown != OUTCOME_HOME:
+                problems.append("%s:%d: Outcome is built only in %s" % (shown, number, OUTCOME_HOME))
             found = NAME_RE.search(line)
             if found:
                 problems.append("%s:%d: %s is not allowed in the pure core" % (shown, number, found.group(1)))

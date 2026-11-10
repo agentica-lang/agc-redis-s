@@ -29,14 +29,14 @@ def run(command: Command, table: Map[String, Command], call: Call) -> Outcome
     return wrong_arity(call)
   end
 
-  if command.container
+  if command.container and not call.args.empty?
     return subcommand(command, table, call)
   end
 
   return command.handler(call)
 end
 
-# A container's arity (-2) guarantees an argument. The subcommand's arity counts
+# Called with at least one argument. The subcommand's arity counts
 # the container name, the subcommand and its arguments, and its error names it
 # as `client|id`, as Redis 7.2 does.
 def subcommand(container: Command, table: Map[String, Command], call: Call) -> Outcome
