@@ -2,7 +2,7 @@
 ## task and the functional tests both call them, so a test cannot pass while the
 ## server does something else: the task only keeps the `Store` they return.
 
-import {Call, Command, Effect} from "command"
+import {Call, Change, Command, Effect} from "command"
 import Dispatch from "dispatch"
 import Writer from "../resp/writer"
 import {Session} from "../session/session"
@@ -64,22 +64,29 @@ def run_for(
 ) -> Ran
   call = Call(
     keyspace: space_at(store.databases, session.db),
+    databases: store.databases,
+    session: session,
     args: argv.drop(1),
     now_ms: now_ms,
     client_id: client_id,
-    session: session,
+    clients: store.sessions.size,
+    table: table,
   )
 
   outcome = Dispatch.execute(table, argv[0], call)
-  next_store = store
-  if outcome.changed
-    next_store = next_store.with(databases: with_space(store.databases, session.db, outcome.keyspace))
-  end
-
+  next_store = apply(store, session.db, outcome.change)
   if outcome.session != session
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
 
   reply = Bytes.concat(outcome.replies.map do |r| Writer.encode(r) end)
   return Ran(store: next_store, reply: reply, close: outcome.effects.include?(Effect.Close))
+end
+
+def apply(store: Store, db: Int, change: Change) -> Store
+  case change
+    Change.Nothing -> return store
+    Change.Keyspace(keyspace) -> return store.with(databases: with_space(store.databases, db, keyspace))
+    Change.All(databases) -> return store.with(databases: databases)
+  end
 end

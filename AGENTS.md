@@ -47,8 +47,11 @@ tools/               check_purity.py and its tests (Python, standard library)
   `Bytes`, never `String`. A reply built from client bytes (an echoed
   argument) is a `Reply.Error(Bytes)`, never decoded and re-encoded.
 - A handler builds its `Outcome` only with the helpers of
-  `commands/command.agc` (`reply`, `replies`, `reply_and_close`, `fail`,
-  `wrong_arity`), never with the constructor. A later feature adds a field to
+  `commands/command.agc` (`reply`, `reply_and_close`, `fail`, `wrong_arity`,
+  and `write` or `write_all` to change data), never with the constructor:
+  `make purity` fails on `Outcome(` anywhere else in `src/`. `Outcome` has no
+  keyspace field, only `change`, so a new keyspace cannot be returned by a
+  helper that the store ignores. A later feature adds a field to
   `Outcome` (or `Call`) with a default and a helper in the PR that needs it,
   and no handler changes.
 - Tests: as few as needed that still cover the software well; before adding
@@ -133,15 +136,16 @@ the field or the folder when it needs it.
 - Expiry: `Keyspace.get` already takes `now_ms`; a key past its deadline will
   count as missing there, so no caller changes. The clock is read in
   `server/` only, so tests do not sleep.
-- Session (transactions, client name, subscribed mode): a pure `Session`
-  struct in a new folder `session/`. It is an input (a field of `Call`) and an
-  output (a field of `Outcome`): `MULTI` queues in it, and `EXEC` reads it.
+- Session (transactions, subscribed mode): `session/session.agc` holds the
+  pure `Session` struct (selected database, client name, library info). It is
+  an input (`Call.session`) and an output (`Outcome.session`), and the store
+  task keeps one per client: `MULTI` queues in it, and `EXEC` reads it.
 - Touched keys: `WATCH` and the blocking commands need the keys a command
   changed. The keyspace tracks dirty keys, or `Outcome.touched` lists them.
 - Databases: `store/databases.agc` holds the 16 keyspaces. A handler sees the
   selected one as `Call.keyspace` and returns its new one; `commands/session.agc`
-  puts it back. `MOVE`, `SWAPDB`, `FLUSHALL` and `COPY ... DB` need all 16: a
-  later PR adds the `Databases` to `Call` and `Outcome`.
+  puts it back (`write`). `Call.databases` is all 16 to read, and `write_all`
+  returns all 16 (`FLUSHALL`; `MOVE`, `SWAPDB` and `COPY ... DB` later).
 - Blocking commands (`BLPOP`, ...): a "blocking allowed" input in `Call`,
   because `MULTI` runs them without blocking. A handler that cannot answer
   returns a park effect (keys, deadline); the store task keeps the parked

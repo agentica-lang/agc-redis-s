@@ -25,6 +25,11 @@ class PurityTest(unittest.TestCase):
     def test_a_new_folder_is_checked(self):
         self.assertTrue(problems_for({"src/hashes/a.agc": "def f() -> Void\n  puts(1)\nend\n"}))
 
+    def test_outcome_is_built_only_in_command_agc(self):
+        text = "def f() -> Int\n  return Outcome(session: s)\nend\n"
+        self.assertTrue(problems_for({"src/commands/strings.agc": text}))
+        self.assertEqual(problems_for({"src/commands/command.agc": text}), [])
+
     def test_missing_src_fails(self):
         self.assertTrue(problems_for({"README.md": "x"}))
 

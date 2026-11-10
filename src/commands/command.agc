@@ -1,12 +1,16 @@
 ## The shapes every command shares: what a handler gets, what it returns, and
 ## the row of the command table.
 ##
-## A handler builds its `Outcome` only with the helpers of this file, never
-## with the constructor. A later feature adds a field to `Outcome` with a
-## default and a helper, and no handler changes.
+## A handler builds its `Outcome` only with the helpers of this file; the
+## constructor is called nowhere else (`make purity` fails otherwise). `Outcome`
+## has no keyspace field: the only way to change data is `Change`, and only
+## `write` and `write_all` make one, so a handler cannot return a keyspace that
+## the store ignores. A later feature adds a field with a default and a helper,
+## and no handler changes.
 
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
+import {Databases} from "../store/databases"
 import {Keyspace} from "../store/keyspace"
 
 ## What the server does after it sent the replies.
@@ -14,27 +18,40 @@ export enum Effect
   Close
 end
 
+## What a command did to the data.
+export enum Change
+  Nothing
+  ## The new keyspace of the selected database.
+  Keyspace(Keyspace)
+  ## The new value of all 16 databases (`FLUSHALL`).
+  All(Databases)
+end
+
 ## Everything a handler may read. New inputs are new fields with a default,
 ## except a struct, which cannot be a default (`session`).
 ## `name` is the lowercase name of the command; `execute` sets it.
 export struct Call
+  ## The selected database, the same as `databases` at `session.db`.
   keyspace: Keyspace
+  ## All the databases, to read: a change goes back in `Outcome.change`.
+  databases: Databases
   session: Session
   args: List[Bytes]
   name: String = ""
   now_ms: Int = 0
   client_id: Int = 0
+  ## The connected clients, this one included.
+  clients: Int = 0
+  ## The command table, for `COMMAND`.
+  table: Map[String, Command] = {}
 end
 
-## A handler's answer: the new keyspace, zero or more replies in order, and
-## the effects. New outputs are new fields with a default. `session` is the
+## A handler's answer: the change to the data, zero or more replies in order,
+## and the effects. New outputs are new fields with a default. `session` is the
 ## client's state after the command; the helpers copy it from the `Call`.
 export struct Outcome
-  keyspace: Keyspace
   session: Session
-  ## True when `keyspace` is not the one of the `Call`; only `write` sets it, so
-  ## the store skips putting the keyspace back after a command that only reads.
-  changed: Bool = false
+  change: Change = Change.Nothing
   replies: List[Reply] = []
   effects: List[Effect] = []
 end
@@ -51,22 +68,28 @@ export struct Command
 end
 
 export def reply(call: Call, answer: Reply) -> Outcome
-  return Outcome(keyspace: call.keyspace, session: call.session, replies: [answer])
+  return Outcome(session: call.session, replies: [answer])
 end
 
-## One reply and a new keyspace: the way a command that writes answers.
+## One reply and a new keyspace for the selected database: how a command that
+## writes answers.
 export def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
-  return Outcome(keyspace: keyspace, session: call.session, changed: true, replies: [answer])
+  return Outcome(session: call.session, change: Change.Keyspace(keyspace), replies: [answer])
+end
+
+## One reply and a new value for all the databases.
+export def write_all(call: Call, databases: Databases, answer: Reply) -> Outcome
+  return Outcome(session: call.session, change: Change.All(databases), replies: [answer])
 end
 
 ## One reply and a new session state (`SELECT`, `CLIENT SETNAME`).
 export def reply_with_session(call: Call, answer: Reply, session: Session) -> Outcome
-  return Outcome(keyspace: call.keyspace, session: session, replies: [answer])
+  return Outcome(session: session, replies: [answer])
 end
 
 ## One reply, then the server closes the connection.
 export def reply_and_close(call: Call, answer: Reply) -> Outcome
-  return Outcome(keyspace: call.keyspace, session: call.session, replies: [answer], effects: [Effect.Close])
+  return Outcome(session: call.session, replies: [answer], effects: [Effect.Close])
 end
 
 ## An error reply; `text` starts with the code, as in `ERR syntax error`.
@@ -84,7 +107,9 @@ export def wrong_arity(call: Call) -> Outcome
 end
 
 ## The row of a container such as `CLIENT`: Redis counts it as `-2`, a name and
-## a subcommand. `dispatch` never calls its handler.
+## a subcommand. `dispatch` never calls its handler. A container that also
+## works alone (`COMMAND`) is a `Command` with `container: true` and its own
+## handler, which runs when no subcommand is given.
 export def container(name: String) -> Command
   return Command(name: name, arity: -2, handler: &wrong_arity, container: true)
 end
