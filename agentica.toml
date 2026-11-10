@@ -1,0 +1,5 @@
+name = "agc-redis-s"
+
+# Every bare `end` is followed by an empty line, as `agentica fmt` writes it.
+[style]
+blank_line_after_end = true
