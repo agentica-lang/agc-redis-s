@@ -6,6 +6,7 @@
 ## default and a helper, and no handler changes.
 
 import {Reply} from "../resp/reply"
+import {Session} from "../session/session"
 import {Keyspace} from "../store/keyspace"
 
 ## What the server does after it sent the replies.
@@ -13,10 +14,12 @@ export enum Effect
   Close
 end
 
-## Everything a handler may read. New inputs are new fields with a default.
+## Everything a handler may read. New inputs are new fields with a default,
+## except a struct, which cannot be a default (`session`).
 ## `name` is the lowercase name of the command; `execute` sets it.
 export struct Call
   keyspace: Keyspace
+  session: Session
   args: List[Bytes]
   name: String = ""
   now_ms: Int = 0
@@ -24,9 +27,14 @@ export struct Call
 end
 
 ## A handler's answer: the new keyspace, zero or more replies in order, and
-## the effects. New outputs are new fields with a default.
+## the effects. New outputs are new fields with a default. `session` is the
+## client's state after the command; the helpers copy it from the `Call`.
 export struct Outcome
   keyspace: Keyspace
+  session: Session
+  ## True when `keyspace` is not the one of the `Call`; only `write` sets it, so
+  ## the store skips putting the keyspace back after a command that only reads.
+  changed: Bool = false
   replies: List[Reply] = []
   effects: List[Effect] = []
 end
@@ -37,15 +45,28 @@ export struct Command
   name: String
   arity: Int
   handler: Fn[Call, Outcome]
+  ## A container (`CLIENT`) has no handler of its own: its first argument picks
+  ## the row `client|id`. Redis calls these subcommands.
+  container: Bool = false
 end
 
 export def reply(call: Call, answer: Reply) -> Outcome
-  return Outcome(keyspace: call.keyspace, replies: [answer])
+  return Outcome(keyspace: call.keyspace, session: call.session, replies: [answer])
+end
+
+## One reply and a new keyspace: the way a command that writes answers.
+export def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
+  return Outcome(keyspace: keyspace, session: call.session, changed: true, replies: [answer])
+end
+
+## One reply and a new session state (`SELECT`, `CLIENT SETNAME`).
+export def reply_with_session(call: Call, answer: Reply, session: Session) -> Outcome
+  return Outcome(keyspace: call.keyspace, session: session, replies: [answer])
 end
 
 ## One reply, then the server closes the connection.
 export def reply_and_close(call: Call, answer: Reply) -> Outcome
-  return Outcome(keyspace: call.keyspace, replies: [answer], effects: [Effect.Close])
+  return Outcome(keyspace: call.keyspace, session: call.session, replies: [answer], effects: [Effect.Close])
 end
 
 ## An error reply; `text` starts with the code, as in `ERR syntax error`.
@@ -60,4 +81,10 @@ end
 
 export def wrong_arity(call: Call) -> Outcome
   return fail(call, "ERR wrong number of arguments for '#{call.name}' command")
+end
+
+## The row of a container such as `CLIENT`: Redis counts it as `-2`, a name and
+## a subcommand. `dispatch` never calls its handler.
+export def container(name: String) -> Command
+  return Command(name: name, arity: -2, handler: &wrong_arity, container: true)
 end

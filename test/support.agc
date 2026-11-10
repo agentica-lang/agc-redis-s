@@ -2,16 +2,21 @@
 
 import {Call, Command, Outcome} from "../src/commands/command"
 import Dispatch from "../src/commands/dispatch"
-import Session from "../src/commands/session"
+import Requests from "../src/commands/session"
 import {Ending} from "../src/resp/stream"
 import Stream from "../src/resp/stream"
 import Table from "../src/commands/table"
+import {Store} from "../src/commands/session"
+import {Databases, fresh} from "../src/store/databases"
+import {Session} from "../src/session/session"
 import {Keyspace} from "../src/store/keyspace"
 import Prop from "pkg/prop/prop"
 
-## What the client gets for the bytes it sent, and the keyspace after them.
+## What the client gets for the bytes it sent, and the databases and the session
+## after them.
 export struct Exchange
-  keyspace: Keyspace
+  databases: Databases
+  session: Session
   reply: Bytes
   closed: Bool
 end
@@ -22,30 +27,38 @@ export def request(words: List[Bytes]) -> Bytes
   return Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
 
-## The whole path without a socket: the stream reader, then the same `Session`
-## calls as the store task. `closed` is set by a `Close` effect or a protocol
-## error; what follows it is ignored.
-export def exchange(keyspace: Keyspace, bytes: Bytes, now_ms: Int = 0) -> Exchange
+## The whole path without a socket: the stream reader, then `Requests.run`, the
+## call the store task makes, for one client with the id 1. `closed` is set by a
+## `Close` effect or a protocol error; what follows it is ignored.
+export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
-  state = keyspace
+  store = Requests.join(Requests.start(databases), 1)
   replies: List[Bytes] = []
   fed = Stream.feed(Stream.start(), bytes)
   for argv in fed.requests
-    done = Session.execute_request(table, state, argv, now_ms, 1)
-    state = done.keyspace
+    done = Requests.run(table, store, 1, argv, now_ms)
+    store = done.store
     replies = replies.push(done.reply)
     if done.close
-      return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: true)
+      return finish(store, replies, true)
     end
   end
 
   case fed.ending
-    Ending.Open -> return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: false)
-    Ending.Invalid(text) ->
-      replies = replies.push(Session.protocol_error_reply(text))
-      return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: true)
-    Ending.Overflow -> return Exchange(keyspace: state, reply: Bytes.concat(replies), closed: true)
+    Ending.Open -> return finish(store, replies, false)
+    Ending.Invalid(text) -> return finish(store, replies.push(Requests.protocol_error_reply(text)), true)
+    Ending.Overflow -> return finish(store, replies, true)
   end
+end
+
+## A request of text words.
+export def words(list: List[String]) -> Bytes
+  return request(list.map do |w| w.bytes end)
+end
+
+## The reply bytes of requests of text words, from empty databases.
+export def talk(requests: List[List[String]]) -> Exchange
+  return exchange(fresh(), Bytes.concat(requests.map do |r| words(r) end))
 end
 
 ## Bytes as a list of Ints, up to `max_size`: `prop` prints a counterexample as
@@ -79,8 +92,13 @@ end
 
 ## One command against a table of the test's own, for the dispatch rules.
 export def run_in(table: Map[String, Command], name: String, args: List[String]) -> Outcome
-  call = Call(keyspace: Keyspace(), args: args.map do |a| a.bytes end)
+  call = Call(keyspace: Keyspace(), session: Session(), args: args.map do |a| a.bytes end)
   return Dispatch.execute(table, name.bytes, call)
+end
+
+def finish(store: Store, replies: List[Bytes], closed: Bool) -> Exchange
+  session = store.sessions.get(1).unwrap_or(Session())
+  return Exchange(databases: store.databases, session: session, reply: Bytes.concat(replies), closed: closed)
 end
 
 def prepend(p: Prop.Pair[List[Int], List[List[Int]]]) -> List[List[Int]]

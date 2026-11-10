@@ -1,7 +1,7 @@
 ## One client connection: read bytes, cut them into requests, hand them to the
 ## store task. The writer task sends the replies.
 
-import Session from "../commands/session"
+import Requests from "../commands/session"
 import {Ending} from "../resp/stream"
 import {Fed} from "../resp/stream"
 import Stream from "../resp/stream"
@@ -95,7 +95,7 @@ def drain(link: Link, fed: Fed) -> Drained
 
   case fed.ending
     Ending.Open -> return Drained.More(fed.stream)
-    Ending.Invalid(text) -> return Drained.Broken(Session.protocol_error_reply(text))
+    Ending.Invalid(text) -> return Drained.Broken(Requests.protocol_error_reply(text))
     Ending.Overflow -> return Drained.Broken("".bytes)
   end
 end
