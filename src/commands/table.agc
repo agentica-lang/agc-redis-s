@@ -6,6 +6,8 @@ import Client from "client"
 import {Command} from "command"
 import Config from "config"
 import Connection from "connection"
+import Expire from "expire"
+import Keys from "keys"
 import Numbers from "numbers"
 import Server from "server"
 import Strings from "strings"
@@ -14,6 +16,6 @@ import Ttl from "ttl"
 export def build() -> Map[String, Command]
   rows = Connection.commands().concat(Client.commands())
   rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands()).concat(Strings.commands())
-  rows = rows.concat(Numbers.commands()).concat(Ttl.commands())
+  rows = rows.concat(Numbers.commands()).concat(Ttl.commands()).concat(Expire.commands()).concat(Keys.commands())
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
 end

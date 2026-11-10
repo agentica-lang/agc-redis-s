@@ -1,12 +1,27 @@
-## The deadline of a key: SET's time options, GETEX, SETEX, PSETEX, TTL and its
-## kin, and the commands that keep or drop a deadline. The clock is an argument
-## of `exchange`, so no test sleeps.
+## The deadline of a key: SET's time options, GETEX, SETEX, PSETEX, the EXPIRE
+## family, TTL, PERSIST, and the commands that keep or drop a deadline. The
+## clock is an argument of `exchange`, so no test sleeps.
 
+import Requests from "../../src/commands/session"
+import Table from "../../src/commands/table"
 import {Databases, fresh} from "../../src/store/databases"
-import {Exchange, exchange, words} from "../support"
+import {Command} from "../../src/commands/command"
+import {Exchange, exchange, to_bytes, words} from "../support"
+import Prop from "pkg/prop/prop"
 
 HIGH = "9223372036854775807"
 NOT_INT = "-ERR value is not an integer or out of range\r\n"
+
+# One key of the model: its value and its deadline, if it has one.
+struct Entry
+  value: List[Int]
+  due: Optional[Int]
+end
+
+struct Model
+  state: Map[Int, Entry]
+  replies: List[Bytes]
+end
 
 # The requests at the clock `now`, on the databases a request before left.
 def at(databases: Databases, now: Int, requests: List[List[String]]) -> Exchange
@@ -39,17 +54,18 @@ def test_set_time_options_and_ttl() -> Result[Void]
       ["PEXPIRETIME", "a"],
       ["TTL", "e"],
       ["PTTL", "nope"],
+      ["EXISTS", "a", "b", "e", "nope", "e"],
     ],
   )
 
   want = ["+OK\r\n", "+OK\r\n", "+OK\r\n", "+OK\r\n", "+OK\r\n", ":10\r\n", ":10000\r\n", ":2\r\n"]
-  want = want.concat([":19000\r\n", ":4000\r\n", ":11\r\n", ":11000\r\n", ":-1\r\n", ":-2\r\n"])
+  want = want.concat([":19000\r\n", ":4000\r\n", ":11\r\n", ":11000\r\n", ":-1\r\n", ":-2\r\n", ":4\r\n"])
   try Test.eq(first.reply.to_a, replies(want).to_a)
 
   edge = at(first.databases, 2500, [["GET", "b"], ["TTL", "b"]])
   try Test.eq(edge.reply.to_a, "$1\r\n1\r\n:0\r\n".bytes.to_a)
-  gone = at(first.databases, 2501, [["GET", "b"], ["TTL", "b"], ["GET", "a"]])
-  return Test.eq(gone.reply.to_a, "$-1\r\n:-2\r\n$1\r\n1\r\n".bytes.to_a)
+  gone = at(first.databases, 2501, [["GET", "b"], ["EXISTS", "b"], ["TTL", "b"], ["TYPE", "b"], ["TYPE", "a"]])
+  return Test.eq(gone.reply.to_a, "$-1\r\n:0\r\n:-2\r\n+none\r\n+string\r\n".bytes.to_a)
 end
 
 # The texts and the rules of the time words: a positive integer that does not
@@ -177,6 +193,89 @@ def test_getex_setex_psetex() -> Result[Void]
   return Test.eq(got.reply.to_a, replies(want).to_a)
 end
 
+# EXPIRE, PEXPIRE, EXPIREAT and PEXPIREAT with NX, XX, GT and LT: a key with no
+# deadline is an infinite one for GT and LT. A time that is not in the future
+# deletes the key and answers 1. The options are read before the key.
+def test_expire_family() -> Result[Void]
+  got = at(
+    fresh(),
+    1000,
+    [
+      ["SET", "k", "v"],
+      ["EXPIRE", "k", "10", "XX"],
+      ["EXPIRE", "k", "10", "GT"],
+      ["EXPIRE", "k", "10", "LT"],
+      ["PTTL", "k"],
+      ["EXPIRE", "k", "10", "NX"],
+      ["EXPIRE", "k", "20", "gt"],
+      ["EXPIRE", "k", "5", "GT"],
+      ["EXPIRE", "k", "20", "GT"],
+      ["EXPIRE", "k", "30", "LT"],
+      ["PEXPIRE", "k", "5000", "LT"],
+      ["PEXPIRE", "k", "5000", "LT"],
+      ["PEXPIRE", "k", "6000", "XX"],
+      ["PTTL", "k"],
+      ["PEXPIREAT", "k", "9000"],
+      ["EXPIREAT", "k", "9"],
+      ["PEXPIRETIME", "k"],
+      ["PERSIST", "k"],
+      ["PERSIST", "k"],
+      ["PERSIST", "none"],
+      ["EXPIRE", "none", "1"],
+      ["EXPIRE", "k", "-1"],
+      ["GET", "k"],
+    ],
+  )
+
+  want = [
+    "+OK\r\n", ":0\r\n", ":0\r\n", ":1\r\n", ":10000\r\n", ":0\r\n", ":1\r\n", ":0\r\n", ":0\r\n", ":0\r\n", ":1\r\n",
+  ]
+
+  want = want.concat([
+    ":0\r\n", ":1\r\n", ":6000\r\n", ":1\r\n", ":1\r\n", ":9000\r\n", ":1\r\n", ":0\r\n", ":0\r\n", ":0\r\n",
+  ])
+
+  want = want.concat([":1\r\n", "$-1\r\n"])
+  return Test.eq(got.reply.to_a, replies(want).to_a)
+end
+
+# The error texts of the EXPIRE family and what they are tested before: the
+# options come first, then the time, then whether the key exists. A time in the
+# past needs no overflow of the arithmetic.
+def test_expire_errors_and_past_times() -> Result[Void]
+  bad = "-ERR invalid expire time in '"
+  got = at(
+    fresh(),
+    1000,
+    [
+      ["EXPIRE", "none", "10", "FOO"],
+      ["EXPIRE", "none", "10", "NX", "XX"],
+      ["EXPIRE", "none", "10", "GT", "LT"],
+      ["EXPIRE", "none", "10", "NX", "LT"],
+      ["EXPIRE", "none", "x"],
+      ["SET", "k", "v"],
+      ["EXPIRE", "k", HIGH],
+      ["EXPIREAT", "k", HIGH],
+      ["PEXPIRE", "k", HIGH],
+      ["PEXPIREAT", "k", HIGH],
+      ["PTTL", "k"],
+      ["EXPIREAT", "k", "1"],
+      ["EXISTS", "k"],
+      ["DBSIZE"],
+    ],
+  )
+
+  conflict = "-ERR NX and XX, GT or LT options at the same time are not compatible\r\n"
+  want = [
+    "-ERR Unsupported option FOO\r\n", conflict, "-ERR GT and LT options at the same time are not compatible\r\n",
+  ]
+
+  want = want.concat([conflict, NOT_INT, "+OK\r\n", "#{bad}expire' command\r\n", "#{bad}expireat' command\r\n"])
+  want = want.concat(["#{bad}pexpire' command\r\n", ":1\r\n", ":9223372036854774807\r\n"])
+  want = want.concat([":1\r\n", ":0\r\n", ":0\r\n"])
+  return Test.eq(got.reply.to_a, replies(want).to_a)
+end
+
 # INFO counts the keys with a deadline, swept or not.
 def test_info_counts_deadlines() -> Result[Void]
   got = at(fresh(), 0, [["SET", "a", "1", "PX", "5"], ["SET", "b", "1"], ["INFO", "keyspace"]])
@@ -185,6 +284,162 @@ def test_info_counts_deadlines() -> Result[Void]
   shown = "$#{info.size}\r\n#{info}\r\n"
   try Test.eq(got.reply.to_a, "+OK\r\n+OK\r\n#{shown}".bytes.to_a)
   return Test.eq(later.reply.to_a, shown.bytes.to_a)
+end
+
+def bulk(data: List[Int]) -> Bytes
+  return Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
+end
+
+def present(entry: Optional[Entry]) -> Int
+  if entry.some?
+    return 1
+  end
+
+  return 0
+end
+
+def whole(n: Int) -> Bytes
+  return ":#{n}\r\n".bytes
+end
+
+# The entry of a key that is not expired at `now`.
+def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
+  case model.get(key)
+    none -> return none
+    some(entry) ->
+      case entry.due
+        none -> return some(entry)
+        some(due) ->
+          if now > due
+            return none
+          end
+
+          return some(entry)
+      end
+  end
+end
+
+# The nine operations as the requests they make: the clock moves by the
+# second number first, and the key is one of three.
+def argv_of(op: List[Int]) -> List[Bytes]
+  xs = op.concat([0, 0, 0, 0])
+  key = "k#{xs[1] % 3}".bytes
+  ms = "#{xs[2] % 9 + 1}".bytes
+  value = to_bytes(op.drop(4))
+  return case xs[0] % 10
+    0 -> ["SET".bytes, key, value]
+    1 -> ["SET".bytes, key, value, "PX".bytes, ms]
+    2 -> ["PEXPIRE".bytes, key, ms]
+    3 -> ["PERSIST".bytes, key]
+    4 -> ["GET".bytes, key]
+    5 -> ["PTTL".bytes, key]
+    6 -> ["EXISTS".bytes, key]
+    7 -> ["APPEND".bytes, key, value]
+    _ -> ["DEL".bytes, key]
+  end
+end
+
+def model_step(model: Model, op: List[Int], now: Int) -> Model
+  xs = op.concat([0, 0, 0, 0])
+  key = xs[1] % 3
+  ms = xs[2] % 9 + 1
+  value = op.drop(4)
+  old = live(model.state, key, now)
+  held = old.unwrap_or(Entry(value: [], due: none))
+  state = model.state
+  answer = "+OK\r\n".bytes
+  case xs[0] % 10
+    0 -> state = state.put(key, Entry(value: value, due: none))
+    1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
+    2 ->
+      answer = whole(0)
+      if old.some?
+        state = state.put(key, held.with(due: some(now + ms)))
+        answer = whole(1)
+      end
+
+    3 ->
+      answer = whole(0)
+      if old.some? and held.due.some?
+        state = state.put(key, held.with(due: none))
+        answer = whole(1)
+      end
+
+    4 ->
+      answer = "$-1\r\n".bytes
+      if old.some?
+        answer = bulk(held.value)
+      end
+
+    5 ->
+      answer = whole(-2)
+      if old.some?
+        answer = whole(-1)
+        case held.due
+          some(due) -> answer = whole(due - now)
+          none -> nil
+        end
+      end
+
+    6 -> answer = whole(present(old))
+    7 ->
+      state = state.put(key, held.with(value: held.value.concat(value)))
+      answer = whole(held.value.size + value.size)
+    _ ->
+      state = state.delete(key)
+      answer = whole(present(old))
+  end
+
+  return Model(state: state, replies: model.replies.push(answer))
+end
+
+# The clock of each operation: it moves by 0 to 4 ms, so keys with a deadline
+# of 1 to 9 ms are met before, at and after it.
+def clocks(ops: List[List[Int]]) -> List[Int]
+  now = 0
+  times: List[Int] = []
+  for op in ops
+    now += op.concat([0, 0])[1] % 5
+    times = times.push(now)
+  end
+
+  return times
+end
+
+# The server run with the active expiry between operations: it must not change
+# an answer.
+def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: List[Int]) -> Bytes
+  started = Requests.start(fresh())
+  store = Requests.join(started, 1)
+  replies: List[Bytes] = []
+  for i in 0...ops.size
+    if ops[i].concat([0])[0] % 10 == 9
+      store = Requests.expire_keys(store, times[i])
+    else
+      done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
+      store = done.store
+      replies = replies.push(done.reply)
+    end
+  end
+
+  return Bytes.concat(replies)
+end
+
+# SET, SET PX, PEXPIRE, PERSIST, GET, PTTL, EXISTS, APPEND and DEL against a Map
+# of values and deadlines, with a clock that moves and a sweep (the tenth kind)
+# that must change no answer. 300 runs: the step limit is between 800 and 1000 runs.
+def test_deadlines_follow_a_model() -> Result[Void]
+  table = Table.build()
+  numbers = Prop.int(0, 255)
+  ops = Prop.list(Prop.list(numbers, 8), 16)
+  return Prop.check(ops, Prop.Config(runs: 300)) do |list|
+    times = clocks(list)
+    kept = list.select do |op| op.concat([0])[0] % 10 != 9 end
+    kept_times = (0...list.size).to_a.select do |i| list[i].concat([0])[0] % 10 != 9 end.map do |i| times[i] end
+    start = Model(state: {}, replies: [])
+    model = (0...kept.size).to_a.reduce(start) do |acc, i| model_step(acc, kept[i], kept_times[i]) end
+    Prop.eq(run_with_sweeps(table, list, times).to_a, Bytes.concat(model.replies).to_a)
+  end
 end
 
 # A deadline near the largest Int is accepted (as in Redis) and must read back

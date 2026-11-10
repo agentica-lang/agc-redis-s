@@ -114,6 +114,30 @@ export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, co
   end
 end
 
+## The time argument of the EXPIRE family (`expireGenericCommand`): any integer,
+## also a negative one. `base_ms` is the clock for EXPIRE and PEXPIRE, 0 for
+## the AT forms.
+export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String) -> Result[Int]
+  case parse_int(text)
+    none -> return error(NOT_INT)
+    some(value) ->
+      ms = value
+      if seconds
+        if value > INT_MAX / 1000 or value < INT_MIN / 1000
+          return bad_expire(command)
+        end
+
+        ms = value * 1000
+      end
+
+      if ms > INT_MAX - base_ms
+        return bad_expire(command)
+      end
+
+      return ok(ms + base_ms)
+  end
+end
+
 def bad_expire(command: String) -> Result[Int]
   return error("ERR invalid expire time in '#{command}' command")
 end
