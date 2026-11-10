@@ -152,6 +152,20 @@ export def positive(text: Bytes, message: String) -> Result[Int]
   end
 end
 
+## A number that is one or more (`getRangeLongFromObjectOrReply` from 1): the
+## same `message` answers a word and a number below 1.
+export def at_least_one(text: Bytes, message: String) -> Result[Int]
+  case parse_int(text)
+    none -> return error(message)
+    some(value) ->
+      if value < 1
+        return error(message)
+      end
+
+      return ok(value)
+  end
+end
+
 def bad_expire(command: String) -> Result[Int]
   return error("ERR invalid expire time in '#{command}' command")
 end
