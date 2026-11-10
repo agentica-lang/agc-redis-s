@@ -54,6 +54,16 @@ def remaining(call: Call, in_ms: Bool, absolute: Bool) -> Outcome
         return reply(call, Reply.Integer(left))
       end
 
-      return reply(call, Reply.Integer((left + 500) / 1000))
+      return reply(call, Reply.Integer(to_seconds(left)))
   end
+end
+
+# The nearest second, found without `left + 500`: a client can set a deadline
+# near the largest Int, and a sum past it halts.
+def to_seconds(ms: Int) -> Int
+  if ms % 1000 >= 500
+    return ms / 1000 + 1
+  end
+
+  return ms / 1000
 end

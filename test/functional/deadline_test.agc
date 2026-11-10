@@ -186,3 +186,30 @@ def test_info_counts_deadlines() -> Result[Void]
   try Test.eq(got.reply.to_a, "+OK\r\n+OK\r\n#{shown}".bytes.to_a)
   return Test.eq(later.reply.to_a, shown.bytes.to_a)
 end
+
+# A deadline near the largest Int is accepted (as in Redis) and must read back
+# without an overflow, in seconds too: the rounding adds nothing to it.
+def test_a_deadline_near_the_largest_int_reads_back() -> Result[Void]
+  got = at(
+    fresh(),
+    1000,
+    [
+      ["SET", "a", "1", "PXAT", "9223372036854775500"],
+      ["EXPIRETIME", "a"],
+      ["PEXPIRETIME", "a"],
+      ["TTL", "a"],
+      ["PTTL", "a"],
+      ["SET", "b", "1", "PXAT", "9223372036854775807"],
+      ["EXPIRETIME", "b"],
+      ["SET", "c", "1", "EXAT", "9223372036854775"],
+      ["EXPIRETIME", "c"],
+    ],
+  )
+
+  want = ["+OK\r\n", ":9223372036854776\r\n", ":9223372036854775500\r\n", ":9223372036854775\r\n"]
+  want = want.concat([
+    ":9223372036854774500\r\n", "+OK\r\n", ":9223372036854776\r\n", "+OK\r\n", ":9223372036854775\r\n",
+  ])
+
+  return Test.eq(got.reply.to_a, replies(want).to_a)
+end

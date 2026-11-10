@@ -8,6 +8,10 @@ import Writer from "../resp/writer"
 import {Session} from "../session/session"
 import {Databases, space_at, sweep, with_space} from "../store/databases"
 
+## How often the store task sweeps; Redis runs its active expiry 10 times a
+## second (hz 10).
+export SWEEP_MS = 100
+
 ## All the data the store task owns: the databases and the session of each
 ## connected client, by client id.
 export struct Store
@@ -36,6 +40,12 @@ end
 ## A client left: its session goes.
 export def leave(store: Store, client_id: Int) -> Store
   return store.with(sessions: store.sessions.delete(client_id))
+end
+
+## Whether a sweep is due: `SWEEP_MS` passed since the last one, or the clock
+## went back (a negative gap would stop the sweeps until it caught up).
+export def sweep_due?(last_ms: Int, now_ms: Int) -> Bool
+  return now_ms < last_ms or now_ms - last_ms >= SWEEP_MS
 end
 
 ## The active expiry: the keys that are past their deadline are dropped. The
