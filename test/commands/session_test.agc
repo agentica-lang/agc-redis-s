@@ -10,7 +10,7 @@ import {Value} from "../../src/store/value"
 # A handler that writes, so the keyspace that comes back can be checked. There
 # is no data command yet.
 def store_key(call: Call) -> Outcome
-  keyspace = put(call.keyspace, call.args[0], Value.Str(call.args[0]))
+  keyspace = put(call.keyspace, call.args[0], Value.Str(call.args[0]), 0)
   return write(call, keyspace, Reply.Simple("OK"))
 end
 
@@ -32,4 +32,12 @@ def test_a_write_lands_in_the_selected_database() -> Result[Void]
   try Test.eq(size(space_at(state.databases, 0)), 1)
   try Test.eq(size(space_at(state.databases, 5)), 2)
   return Test.eq(size(space_at(state.databases, 1)), 0)
+end
+
+# A sweep is due every 100 ms, and when the clock went back (a negative gap).
+def test_sweep_is_due_by_time_and_after_a_clock_step_back() -> Result[Void]
+  try Test.eq(Requests.sweep_due?(1000, 1099), false)
+  try Test.eq(Requests.sweep_due?(1000, 1100), true)
+  try Test.eq(Requests.sweep_due?(1000, 999), true)
+  return Test.eq(Requests.sweep_due?(1000, 1000), false)
 end

@@ -77,13 +77,16 @@ def section(call: Call, name: String) -> String
   return "#{lines.join("\r\n")}\r\n"
 end
 
-# Only a database with keys is listed. No key has a deadline yet.
+# Only a database with keys is listed. `expires` counts the keys with a
+# deadline, swept or not, as Redis does. avg_ttl is 0: Redis only estimates it
+# from its sampling.
 def keyspace_lines(databases: Databases.Databases) -> List[String]
   lines = ["# Keyspace"]
   for index in 0...Databases.COUNT
-    keys = Keyspace.size(Databases.space_at(databases, index))
+    space = Databases.space_at(databases, index)
+    keys = Keyspace.size(space)
     if keys > 0
-      lines = lines.push("db#{index}:keys=#{keys},expires=0,avg_ttl=0")
+      lines = lines.push("db#{index}:keys=#{keys},expires=#{Keyspace.expiring(space)},avg_ttl=0")
     end
   end
 

@@ -226,7 +226,7 @@ def test_commands_and_their_texts() -> Result[Void]
   ])
 
   expected = [
-    "+OK\r\n$-1\r\n$1\r\n1\r\n$-1\r\n-ERR syntax error\r\n-ERR syntax error\r\n",
+    "+OK\r\n$-1\r\n$1\r\n1\r\n$-1\r\n-ERR syntax error\r\n+OK\r\n",
     "-ERR wrong number of arguments for 'mset' command\r\n",
     ":0\r\n:1\r\n*3\r\n$1\r\n3\r\n$-1\r\n$1\r\n9\r\n",
     "$0\r\n\r\n-ERR value is not an integer or out of range\r\n",

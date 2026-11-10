@@ -5,9 +5,9 @@ import {Value} from "../../src/store/value"
 
 # Two databases that hold keys: 2 in db 0 and 1 in db 3.
 def filled() -> Databases
-  first = put(Keyspace(), "a".bytes, Value.Str("1".bytes))
-  base = put(first, "b".bytes, Value.Str("2".bytes))
-  other = put(Keyspace(), "c".bytes, Value.Str("3".bytes))
+  first = put(Keyspace(), "a".bytes, Value.Str("1".bytes), 0)
+  base = put(first, "b".bytes, Value.Str("2".bytes), 0)
+  other = put(Keyspace(), "c".bytes, Value.Str("3".bytes), 0)
   zero = with_space(fresh(), 0, base)
   return with_space(zero, 3, other)
 end
@@ -91,9 +91,9 @@ end
 # commands and not subcommands, and COMMAND alone lists the rows.
 def test_command() -> Result[Void]
   result = talk([["COMMAND", "DOCS"], ["COMMAND", "COUNT"], ["COMMAND", "COUNT", "x"]])
-  try Test.eq(result.reply, "*0\r\n:29\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
+  try Test.eq(result.reply, "*0\r\n:36\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
   listed = talk([["COMMAND"]]).reply
   quit_entry = "*10\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n*0\r\n*0\r\n*0\r\n*0\r\n"
-  try Test.assert(listed.take(5) == "*29\r\n".bytes, "one entry per command")
+  try Test.assert(listed.take(5) == "*36\r\n".bytes, "one entry per command")
   return Test.assert(listed.size >= quit_entry.bytesize * 24, "ten items each")
 end

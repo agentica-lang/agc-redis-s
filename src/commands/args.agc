@@ -2,6 +2,8 @@
 
 MIN_DIV_10 = -922_337_203_685_477_580
 INT_MIN = -9_223_372_036_854_775_807 - 1
+INT_MAX = 9_223_372_036_854_775_807
+NOT_INT = "ERR value is not an integer or out of range"
 
 ## An integer as Redis's `string2ll` reads it: digits only, one optional `-`, no
 ## `+`, no space, no leading zero (`0` alone is fine, `-0` is not), and it must
@@ -81,4 +83,37 @@ end
 ## An attribute as the text of CLIENT LIST: empty when not set.
 export def shown(word: Optional[Bytes]) -> Bytes
   return word.unwrap_or("".bytes)
+end
+
+## The time argument of SET, GETEX, SETEX and PSETEX as an absolute deadline in
+## ms (Redis's `getExpireMillisecondsOrReply`): it must be a positive integer.
+## `relative` (EX, PX) adds the clock. The error is the whole reply text.
+export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, command: String) -> Result[Int]
+  case parse_int(text)
+    none -> return error(NOT_INT)
+    some(value) ->
+      if value <= 0 or (seconds and value > INT_MAX / 1000)
+        return bad_expire(command)
+      end
+
+      ms = value
+      if seconds
+        ms = value * 1000
+      end
+
+      # The sum is compared first: an Int that overflows halts.
+      if relative and ms > INT_MAX - now_ms
+        return bad_expire(command)
+      end
+
+      if relative
+        return ok(ms + now_ms)
+      end
+
+      return ok(ms)
+  end
+end
+
+def bad_expire(command: String) -> Result[Int]
+  return error("ERR invalid expire time in '#{command}' command")
 end

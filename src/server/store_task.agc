@@ -10,11 +10,10 @@ import Table from "../commands/table"
 import Clock from "clock"
 import {Message} from "message"
 
-POLL_MS = 1000
-
 struct State
   store: Store
   table: Map[String, Command]
+  swept_at: Int = 0
 end
 
 ## Runs until `inbox` is closed.
@@ -25,9 +24,12 @@ end
 def take_all(inbox: Channel[Message], first: State) -> State
   state = first
   while true
-    case inbox.recv(POLL_MS)
-      ok(message) -> state = handle(state, message)
+    case inbox.recv(Requests.SWEEP_MS)
+      ok(message) ->
+        now = Clock.now_ms()
+        state = handle(swept(state, now), message, now)
       error(_) ->
+        state = swept(state, Clock.now_ms())
         if inbox.closed? and inbox.empty?
           break
         end
@@ -37,10 +39,20 @@ def take_all(inbox: Channel[Message], first: State) -> State
   return state
 end
 
-def handle(state: State, message: Message) -> State
+# The active expiry runs between messages, at most every `SWEEP_MS`, also under
+# a load that never lets the receive time out.
+def swept(state: State, now: Int) -> State
+  if not Requests.sweep_due?(state.swept_at, now)
+    return state
+  end
+
+  return state.with(store: Requests.expire_keys(state.store, now), swept_at: now)
+end
+
+def handle(state: State, message: Message, now: Int) -> State
   case message
     Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
-    Message.Exec(conn, argv) -> return exec(state, conn, argv)
+    Message.Exec(conn, argv) -> return exec(state, conn, argv, now)
     Message.Close(conn, farewell, done) -> return hang_up(state, conn, farewell, done)
     Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
   end
@@ -48,8 +60,8 @@ end
 
 # A client that was dropped or already quit has no session, so the requests it
 # left in the inbox do nothing.
-def exec(state: State, conn: Dock.Conn, argv: List[Bytes]) -> State
-  done = Requests.run(state.table, state.store, conn.id, argv, Clock.now_ms())
+def exec(state: State, conn: Dock.Conn, argv: List[Bytes], now: Int) -> State
+  done = Requests.run(state.table, state.store, conn.id, argv, now)
   send(conn, done.reply)
   next_state = state.with(store: done.store)
   if done.close
