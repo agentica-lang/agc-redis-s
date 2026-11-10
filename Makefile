@@ -4,9 +4,9 @@
 JOBS ?= 4
 
 # Named so that nothing else under the root is read.
-SOURCES = src test
+SOURCES = agc_redis_s.agc src test
 
-.PHONY: check fmt-check lint purity test
+.PHONY: check fmt-check lint purity test integration
 
 check: purity
 	@agentica check $(SOURCES)
@@ -25,3 +25,7 @@ purity:
 test:
 	@agentica test --jobs $(JOBS) test
 	@cd tools && python3 -m unittest -q
+
+# The tests start and stop their own server processes.
+integration:
+	@cd integration && python3 -m unittest discover -s . -v

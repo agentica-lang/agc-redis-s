@@ -7,9 +7,11 @@ is in the GitHub issues, one milestone per release.
 ## Map
 
 ```text
+agc_redis_s.agc      main: options, start the store task, run the accept loop
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
-                     types), writer.agc (reply to bytes)
+                     types), writer.agc (reply to bytes), reader.agc (bytes
+                     to a request, resumable at an offset)
   store/             PURE. The data: value.agc (one variant per data type),
                      keyspace.agc (key to value); one file per data type
                      (hash.agc, list.agc, set.agc, zset.agc) when it lands
@@ -17,13 +19,15 @@ src/
                      helpers that build an Outcome), table.agc (all rows),
                      dispatch.agc (name, arity, call the handler), one file
                      per command family
+  server/            I/O SHELL: sockets, tasks, the clock. config, accept,
+                     connection (reader task), writer (writer task),
+                     store_task (owns the data), message, clock
 test/                unit tests (`*_test.agc`), the same path as the source;
                      support.agc holds the helpers they share
+integration/         one smoke test of the real binary (Python, standard
+                     library only)
 tools/               check_purity.py and its tests (Python, standard library)
 ```
-
-The I/O shell (`src/server/`: sockets, tasks, the clock) and `integration/`
-(a Python peer over a raw socket) join in the next PR of issue #1.
 
 ## Rules
 
@@ -45,7 +49,9 @@ The I/O shell (`src/server/`: sockets, tasks, the clock) and `integration/`
   `Outcome` (or `Call`) with a default and a helper in the PR that needs it,
   and no handler changes.
 - Tests: unit and integration tests only, no BDD; few, on the important
-  behavior. Network tests use localhost and port 0 and clean up every process.
+  behavior. TCP is tested in the Agentica repo: here one smoke test
+  (`integration/`) proves the binary starts, answers PING, QUIT closes, and
+  SIGTERM frees the port. It uses port 0 and stops its server.
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
@@ -57,7 +63,8 @@ The I/O shell (`src/server/`: sockets, tasks, the clock) and `integration/`
 ## Commands
 
 - `make check` (purity, `agentica check`, lint), `make fmt-check`,
-  `make test` (unit tests of `test/` and `tools/`). `agentica fmt src test`
+  `make test` (unit tests of `test/` and `tools/`), `make integration`
+  (the smoke test). `agentica fmt src test`
   fixes formatting.
 
 ## How a command travels
@@ -86,7 +93,7 @@ used by `QUIT`) is what the server does after the replies.
 3. A new data type: a variant in `store/value.agc` and its operations in
    `store/<type>.agc`. Handlers call those; they never reach into `Value`.
 4. A unit test in `test/commands/<family>_test.agc` (the same name).
-5. One case in `integration/` when the wire behavior matters.
+5. Nothing in `integration/`: it is only the smoke test.
 6. Mark it in the table of its phase in `README.md`.
 
 ## Where later features go

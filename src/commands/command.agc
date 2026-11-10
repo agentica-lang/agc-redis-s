@@ -43,10 +43,6 @@ export def reply(call: Call, answer: Reply) -> Outcome
   return Outcome(keyspace: call.keyspace, replies: [answer])
 end
 
-export def replies(call: Call, answers: List[Reply]) -> Outcome
-  return Outcome(keyspace: call.keyspace, replies: answers)
-end
-
 ## One reply, then the server closes the connection.
 export def reply_and_close(call: Call, answer: Reply) -> Outcome
   return Outcome(keyspace: call.keyspace, replies: [answer], effects: [Effect.Close])

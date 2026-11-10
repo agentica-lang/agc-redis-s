@@ -27,3 +27,4 @@ jobs:
           make check
           make fmt-check
           make test
+          make integration

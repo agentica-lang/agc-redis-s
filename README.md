@@ -15,24 +15,28 @@ A Redis-compatible in-memory server, written in
 No persistence (no RDB, no AOF), no Lua scripting, no cluster, no
 replication. Persistence and Lua may come later through a native module.
 
+## Run
+
+```text
+agentica agc_redis_s.agc --port 6379   # 0 picks a free port
+```
+
 ## Develop
 
 Needs Agentica 0.28.0.
 
 ```text
-make check fmt-check test
+make check fmt-check test integration
 ```
 
 Read `AGENTS.md` for the layout and how to add a command.
 
 ## Status
 
-The server does not start yet: only the pure core exists.
-
 | Phase | Scope | State |
 |---|---|---|
-| 0 | Layout, CI, PING and ECHO | in progress |
-| 1 | RESP2 reader and writer | planned |
+| 0 | Layout, CI, PING and ECHO | done |
+| 1 | RESP2 reader and writer | in progress |
 | 2 | Connection and server commands | planned |
 | 3 | Strings | planned |
 | 4 | Keys and expiry | planned |
