@@ -3,7 +3,6 @@
 
 # `TCP.send_bytes` takes at most 1 MiB.
 MAX_SEND = 1_048_576
-BATCH = 64
 POLL_MS = 1000
 SEND_TIMEOUT_MS = 30_000
 
@@ -15,8 +14,8 @@ end
 export def run(pipe: Pipe) -> Void
   while true
     case pipe.outbox.recv(POLL_MS)
-      ok(first) ->
-        if not flush(pipe, first)
+      ok(bytes) ->
+        if not send_all(pipe, bytes)
           break
         end
 
@@ -26,31 +25,19 @@ export def run(pipe: Pipe) -> Void
         end
     end
   end
+
+  # Whatever ended the loop, the client is done: this wakes the reader too.
+  TCP.close(pipe.socket)
 end
 
-# Replies that are already waiting go out in one send: a pipelined client costs
-# one system call, not one per reply.
-def flush(pipe: Pipe, first: Bytes) -> Bool
-  parts = [first]
-  while parts.size < BATCH
-    case pipe.outbox.recv(0)
-      ok(more) -> parts = parts.push(more)
-      error(_) -> break
-    end
-  end
-
-  return send_all(pipe, Bytes.concat(parts))
-end
-
-# A failed send means the client is gone: closing the socket wakes the reader,
-# and closing the outbox makes the store task drop the client.
+# A failed send means the client is gone: closing the outbox makes the store
+# task drop the client, and the loop above then closes the socket.
 def send_all(pipe: Pipe, bytes: Bytes) -> Bool
   rest = bytes
   while not rest.empty?
     case TCP.send_bytes(pipe.socket, rest.take(MAX_SEND), SEND_TIMEOUT_MS)
       ok(_) -> rest = rest.drop(MAX_SEND)
       error(_) ->
-        TCP.close(pipe.socket)
         pipe.outbox.close
         return false
     end

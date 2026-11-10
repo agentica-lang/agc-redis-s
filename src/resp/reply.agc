@@ -2,7 +2,8 @@
 
 export enum Reply
   Simple(String)
-  Error(String)
+  ## The text is bytes because it may echo what the client sent.
+  Error(Bytes)
   Integer(Int)
   Bulk(Bytes)
   NilBulk

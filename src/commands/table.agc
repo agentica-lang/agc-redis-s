@@ -1,8 +1,8 @@
 ## The command table: every family's rows, by lowercase name. A new family is
 ## one import and one line here.
 
-import Connection from "connection"
 import {Command} from "command"
+import Connection from "connection"
 
 export def build() -> Map[String, Command]
   rows = Connection.commands()

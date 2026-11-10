@@ -17,16 +17,13 @@ replication. Persistence and Lua may come later through a native module.
 
 ## Run
 
-Needs Agentica 0.28.0.
-
 ```text
-agentica agc_redis_s.agc --port 6379
-redis-cli ping
+agentica agc_redis_s.agc --port 6379   # 0 picks a free port
 ```
 
-`--port 0` picks a free port and prints it on the first line.
-
 ## Develop
+
+Needs Agentica 0.28.0.
 
 ```text
 make check fmt-check test integration
@@ -43,14 +40,10 @@ Read `AGENTS.md` for the layout and how to add a command.
 | 2 | Connection and server commands | planned |
 | 3 | Strings | planned |
 | 4 | Keys and expiry | planned |
-| 5 | Hashes | planned |
-| 6 | Lists | planned |
-| 7 | Sets | planned |
-| 8 | Sorted sets | planned |
-| 9 | Transactions | planned |
-| 10 | Pub/sub | planned |
-| 11 | Blocking list commands | planned |
-| 12 | Compatibility and speed | planned |
+| 5 | Hashes, lists, sets, sorted sets | planned |
+| 6 | Transactions, pub/sub | planned |
+| 7 | Blocking list commands | planned |
+| 8 | Compatibility and speed | planned |
 
 ## License
 

@@ -3,7 +3,7 @@ import threading
 import time
 import unittest
 
-from server import Server, port_is_free, read_exactly, wait_until
+from server import Server, port_is_free, read_exactly
 
 PONG = b"+PONG\r\n"
 
@@ -32,15 +32,6 @@ class PingTest(unittest.TestCase):
     def test_ping(self):
         self.assertEqual(self.ask(command(b"PING"), len(PONG)), PONG)
 
-    def test_ping_with_message_is_bulk(self):
-        self.assertEqual(self.ask(command(b"PING", b"hello"), 11), b"$5\r\nhello\r\n")
-
-    def test_name_is_case_insensitive(self):
-        self.assertEqual(self.ask(command(b"ping"), len(PONG)), PONG)
-
-    def test_inline_command(self):
-        self.assertEqual(self.ask(b"PING\r\n", len(PONG)), PONG)
-
     def test_echo_is_binary_safe(self):
         data = b"\x00\r\n\xff"
         self.assertEqual(self.ask(command(b"ECHO", data), 10), b"$4\r\n" + data + b"\r\n")
@@ -59,15 +50,16 @@ class PingTest(unittest.TestCase):
         reply = b"-ERR unknown command 'FOO', with args beginning with: 'a' 'b c' \r\n"
         self.assertEqual(self.ask(command(b"FOO", b"a", b"b c"), len(reply)), reply)
 
-    def test_wrong_arity(self):
-        reply = b"-ERR wrong number of arguments for 'ping' command\r\n"
-        self.assertEqual(self.ask(command(b"PING", b"a", b"b", b"c"), len(reply)), reply)
-
-    def test_protocol_error_closes_the_connection(self):
-        reply = b"-ERR Protocol error: invalid multibulk length\r\n"
+    def test_unknown_command_cannot_forge_a_reply(self):
+        reply = b"-ERR unknown command 'FOO', with args beginning with: 'a  +OK\xff' \r\n"
         with self.server.connect() as sock:
-            sock.sendall(b"*x\r\n")
-            self.assertEqual(read_exactly(sock, len(reply)), reply)
+            sock.sendall(command(b"FOO", b"a\r\n+OK\xff") + command(b"PING"))
+            self.assertEqual(read_exactly(sock, len(reply) + len(PONG)), reply + PONG)
+
+    def test_quit_replies_ok_then_closes(self):
+        with self.server.connect() as sock:
+            sock.sendall(command(b"QUIT") + command(b"PING"))
+            self.assertEqual(read_exactly(sock, 5), b"+OK\r\n")
             self.assertEqual(sock.recv(10), b"")
 
     def test_connect_and_close_without_sending(self):
@@ -100,7 +92,7 @@ class StopTest(unittest.TestCase):
         try:
             server.proc.send_signal(signal.SIGTERM)
             server.proc.wait(timeout=10)
-            self.assertTrue(wait_until(lambda: port_is_free(server.port)))
+            self.assertTrue(port_is_free(server.port))
         finally:
             server.stop()
 

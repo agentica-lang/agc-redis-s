@@ -3,7 +3,7 @@ import Writer from "../../src/resp/writer"
 
 def test_scalars() -> Result[Void]
   try Test.eq(Writer.encode(Reply.Simple("OK")), "+OK\r\n".bytes)
-  try Test.eq(Writer.encode(Reply.Error("ERR boom")), "-ERR boom\r\n".bytes)
+  try Test.eq(Writer.encode(Reply.Error("ERR boom".bytes)), "-ERR boom\r\n".bytes)
   return Test.eq(Writer.encode(Reply.Integer(-7)), ":-7\r\n".bytes)
 end
 
@@ -21,4 +21,9 @@ end
 def test_nested_array() -> Result[Void]
   reply = Reply.Array([Reply.Integer(1), Reply.Array([Reply.Bulk("a".bytes)])])
   return Test.eq(Writer.encode(reply), "*2\r\n:1\r\n*1\r\n$1\r\na\r\n".bytes)
+end
+
+def test_status_lines_cannot_carry_a_line_break() -> Result[Void]
+  try Test.eq(Writer.encode(Reply.Error("ERR a\r\n+PONG".bytes)), "-ERR a  +PONG\r\n".bytes)
+  return Test.eq(Writer.encode(Reply.Simple("a\nb")), "+a b\r\n".bytes)
 end

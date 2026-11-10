@@ -1,9 +1,6 @@
-"""Starts the server on a free port and talks RESP over a raw socket."""
-
 import os
 import socket
 import subprocess
-import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENTICA = os.environ.get("AGENTICA", "agentica")
@@ -59,12 +56,3 @@ def port_is_free(port):
         return False
     finally:
         probe.close()
-
-
-def wait_until(predicate, seconds=5):
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.05)
-    return predicate()

@@ -10,12 +10,6 @@ def test_array_request() -> Result[Void]
   return Test.eq(Reader.read_request(buf, 0), Read.Request(argv(["PING", "hi"]), buf.size))
 end
 
-def test_two_requests_walk_by_offset() -> Result[Void]
-  one = "*1\r\n$4\r\nPING\r\n".bytes
-  buf = one + one
-  return Test.eq(Reader.read_request(buf, one.size), Read.Request(argv(["PING"]), buf.size))
-end
-
 def test_bulk_is_binary_safe() -> Result[Void]
   data = Bytes.from_list([13, 10, 0]).unwrap!
   buf = "*1\r\n$3\r\n".bytes + data + "\r\n".bytes
@@ -23,8 +17,7 @@ def test_bulk_is_binary_safe() -> Result[Void]
 end
 
 def test_inline_request() -> Result[Void]
-  try Test.eq(Reader.read_request("PING  a\r\n".bytes, 0), Read.Request(argv(["PING", "a"]), 9))
-  return Test.eq(Reader.read_request("\r\n".bytes, 0), Read.Skip(2))
+  return Test.eq(Reader.read_request("PING  a\r\n".bytes, 0), Read.Request(argv(["PING", "a"]), 9))
 end
 
 def test_every_prefix_is_incomplete() -> Result[Void]

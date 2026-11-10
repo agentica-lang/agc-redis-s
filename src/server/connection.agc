@@ -1,13 +1,12 @@
 ## One client connection: read bytes, cut them into requests, hand them to the
-## store task. Replies do not come back here; the writer task sends them.
+## store task. The writer task sends the replies.
 
 import {Read} from "../resp/reader"
 import Reader from "../resp/reader"
 import {Message} from "message"
 import Writer from "writer"
 
-# A client may stay quiet for as long as it likes. A receive timeout closes the
-# socket, so the wait is a year.
+# A receive timeout closes the socket and there is no wait-forever form: a year.
 IDLE_MS = 31_536_000_000
 READ_BYTES = 65_536
 SEND_TIMEOUT_MS = 1000
@@ -36,13 +35,27 @@ export def serve(link: Link) -> Void
 
   writer = Task.spawn(&Writer.run, Writer.Pipe(socket: link.socket, outbox: outbox))
   farewell = read_loop(link)
-  _ = link.inbox.send(Message.Close(link.id, farewell), SEND_TIMEOUT_MS)
+  send_close(link.inbox, link.id, farewell)
   case Task.await(writer, WRITER_WAIT_MS)
     Await.Done(_) -> nil
     Await.TimedOut -> Task.cancel(writer)
   end
 
   TCP.close(link.socket)
+end
+
+## The store task must learn that the client left, or its outbox stays in the
+## table for good: retry until the message is in or nobody will read it.
+export def send_close(inbox: Channel[Message], id: Int, farewell: Bytes) -> Void
+  while true
+    case inbox.send(Message.Close(id, farewell), SEND_TIMEOUT_MS)
+      ok(_) -> return
+      error(_) ->
+        if inbox.closed?
+          return
+        end
+    end
+  end
 end
 
 # Returns the bytes to send before closing: empty when the client just left.
@@ -75,8 +88,11 @@ def drain(link: Link, buffer: Bytes) -> Drained
       Read.Invalid(text) -> return Drained.Broken("-ERR #{text}\r\n".bytes)
       Read.Skip(next) -> pos = next
       Read.Request(argv, next) ->
-        _ = link.inbox.send(Message.Exec(link.id, argv), SEND_TIMEOUT_MS)
-        pos = next
+        # A request that is lost would shift every later reply: end instead.
+        case link.inbox.send(Message.Exec(link.id, argv), SEND_TIMEOUT_MS)
+          error(_) -> return Drained.Broken("".bytes)
+          ok(_) -> pos = next
+        end
     end
   end
 

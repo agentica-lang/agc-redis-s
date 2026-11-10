@@ -1,7 +1,7 @@
 ## The task that owns the data. It takes one message at a time, so a command
 ## never sees a half-done one, as with the single thread of Redis.
 
-import {Call, Command} from "../commands/command"
+import {Call, Command, Effect} from "../commands/command"
 import Dispatch from "../commands/dispatch"
 import Table from "../commands/table"
 import Clock from "clock"
@@ -9,8 +9,6 @@ import {Message} from "message"
 import Writer from "../resp/writer"
 import {Keyspace} from "../store/keyspace"
 
-# The reply of a client that does not drain its outbox in this time is lost
-# and the client dropped, so one slow client cannot stall the others.
 SEND_TIMEOUT_MS = 1000
 POLL_MS = 1000
 
@@ -47,13 +45,35 @@ def handle(state: State, message: Message) -> State
   end
 end
 
+# A client that was dropped (its outbox was full) may still have requests in
+# the inbox: they must not run.
 def exec(state: State, id: Int, argv: List[Bytes]) -> State
+  if not state.clients.key?(id)
+    return state
+  end
+
   call = Call(keyspace: state.keyspace, args: argv.drop(1), now_ms: Clock.now_ms(), client_id: id)
   outcome = Dispatch.execute(state.table, argv[0], call)
-  return send(state.with(keyspace: outcome.keyspace), id, Writer.encode(outcome.reply))
+  sent = send(
+    state.with(keyspace: outcome.keyspace),
+    id,
+    Bytes.concat(outcome.replies.map do |r| Writer.encode(r) end),
+  )
+
+  if outcome.effects.include?(Effect.Close)
+    return drop(sent, id)
+  end
+
+  return sent
 end
 
+# This is the one place where a slow client can slow the others: the wait is
+# SEND_TIMEOUT_MS at most, then the client is dropped.
 def send(state: State, id: Int, bytes: Bytes) -> State
+  if bytes.empty?
+    return state
+  end
+
   case state.clients.get(id)
     none -> return state
     some(outbox) ->
@@ -65,15 +85,11 @@ def send(state: State, id: Int, bytes: Bytes) -> State
 end
 
 def close(state: State, id: Int, farewell: Bytes) -> State
-  next = state
-  if not farewell.empty?
-    next = send(state, id, farewell)
-  end
-
-  return drop(next, id)
+  return drop(send(state, id, farewell), id)
 end
 
-# Closing the outbox ends the writer task after it drained what is in it.
+# Closing the outbox ends the writer task after it drained what is in it, and
+# the writer closes the socket, which ends the reader.
 def drop(state: State, id: Int) -> State
   case state.clients.get(id)
     none -> return state

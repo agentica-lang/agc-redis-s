@@ -8,7 +8,10 @@ export struct Keyspace
   entries: Map[Bytes, Value] = {}
 end
 
-export def get(keyspace: Keyspace, key: Bytes) -> Optional[Value]
+## An expired key will count as missing here. No key has a deadline yet, so the
+## time is not read; reads already take it so that the expiry change does not
+## touch their callers.
+export def get(keyspace: Keyspace, key: Bytes, _now_ms: Int) -> Optional[Value]
   return keyspace.entries.get(key)
 end
 

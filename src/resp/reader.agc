@@ -5,7 +5,6 @@
 
 MAX_BULK = 536_870_912
 MAX_ARRAY = 1_048_576
-MAX_LINE = 65_536
 LF = 10
 CR = 13
 DOLLAR = 36
@@ -66,30 +65,18 @@ end
 
 def parse_int(text: Bytes) -> Optional[Int]
   case String.from_bytes(text)
-    ok(s) -> return int_or_none(s.to_i)
     error(_) -> return none
+    ok(s) ->
+      case s.to_i
+        ok(n) -> return some(n)
+        error(_) -> return none
+      end
   end
-end
-
-def int_or_none(parsed: Result[Int]) -> Optional[Int]
-  case parsed
-    ok(n) -> return some(n)
-    error(_) -> return none
-  end
-end
-
-# No LF yet: wait for more, unless the line is already too long to be sane.
-def no_line(buf: Bytes, from: Int, text: String) -> Read
-  if buf.size - from > MAX_LINE
-    return Read.Invalid(text)
-  end
-
-  return Read.Incomplete
 end
 
 def read_inline(buf: Bytes, from: Int) -> Read
   case find_lf(buf, from)
-    none -> return no_line(buf, from, "Protocol error: too big inline request")
+    none -> return Read.Incomplete
     some(lf) -> return inline_request(line_text(buf, from, lf), lf + 1)
   end
 end
@@ -105,15 +92,12 @@ end
 
 def read_array(buf: Bytes, from: Int) -> Read
   case find_lf(buf, from)
-    none -> return no_line(buf, from, "Protocol error: too big mbulk count string")
-    some(lf) -> return array_header(buf, parse_int(line_text(buf, from + 1, lf)), lf + 1)
-  end
-end
-
-def array_header(buf: Bytes, count: Optional[Int], from: Int) -> Read
-  case count
-    none -> return Read.Invalid("Protocol error: invalid multibulk length")
-    some(n) -> return array_items(buf, n, from)
+    none -> return Read.Incomplete
+    some(lf) ->
+      case parse_int(line_text(buf, from + 1, lf))
+        none -> return Read.Invalid("Protocol error: invalid multibulk length")
+        some(n) -> return array_items(buf, n, lf + 1)
+      end
   end
 end
 
@@ -151,23 +135,12 @@ def read_bulk(buf: Bytes, from: Int) -> Bulk
   end
 
   case find_lf(buf, from)
-    none -> return no_bulk(buf, from)
-    some(lf) -> return bulk_body(buf, parse_int(line_text(buf, from + 1, lf)), lf + 1)
-  end
-end
-
-def no_bulk(buf: Bytes, from: Int) -> Bulk
-  if buf.size - from > MAX_LINE
-    return Bulk.Bad("Protocol error: too big bulk count string")
-  end
-
-  return Bulk.More
-end
-
-def bulk_body(buf: Bytes, length: Optional[Int], start: Int) -> Bulk
-  case length
-    none -> return Bulk.Bad("Protocol error: invalid bulk length")
-    some(n) -> return bulk_slice(buf, n, start)
+    none -> return Bulk.More
+    some(lf) ->
+      case parse_int(line_text(buf, from + 1, lf))
+        none -> return Bulk.Bad("Protocol error: invalid bulk length")
+        some(n) -> return bulk_slice(buf, n, lf + 1)
+      end
   end
 end
 
