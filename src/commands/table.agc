@@ -7,7 +7,9 @@ import {Command} from "command"
 import Config from "config"
 import Connection from "connection"
 import Expire from "expire"
-import Hashes from "hashes"
+import Counters from "hashes/counters"
+import Fields from "hashes/fields"
+import HashListings from "hashes/listings"
 import Keys from "keys"
 import Numbers from "numbers"
 import Scan from "scan"
@@ -24,7 +26,9 @@ export def build() -> Map[String, Command]
       .concat(Expire.commands())
       .concat(Keys.commands())
       .concat(Scan.commands())
-      .concat(Hashes.commands())
+      .concat(Fields.commands())
+      .concat(HashListings.commands())
+      .concat(Counters.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
