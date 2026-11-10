@@ -2,7 +2,7 @@
 ## string holds at most `proto-max-bulk-len` bytes.
 
 import Keyspace from "keyspace"
-import {Value, joined_text, pending?, value_size, with_more} from "value"
+import {Value, joined_text, pending?, string?, value_size, with_more} from "value"
 
 ## 512 MB, the default of `proto-max-bulk-len`.
 export MAX_BYTES = 536_870_912
@@ -12,6 +12,15 @@ export MAX_BYTES = 536_870_912
 export struct Settled
   keyspace: Keyspace.Keyspace
   changed: Bool
+end
+
+## True when the key holds a live value that is not a string: the string
+## commands answer WRONGTYPE.
+export def foreign?(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Bool
+  case Keyspace.get(keyspace, key, now_ms)
+    none -> return false
+    some(value) -> return not string?(value)
+  end
 end
 
 ## `count` zero bytes, built by doubling, so the copies add up to `count`.

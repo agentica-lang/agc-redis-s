@@ -8,9 +8,30 @@
 ## store/strings.agc).
 ## Invariants of `Appended`: the size is the sum of the sizes of the pieces, and
 ## no piece is empty.
+##
+## A hash is a `Hash`: field to value, in the order the fields were first set
+## (a `Map` keeps it, as a Redis listpack does; the fields of a big Redis hash
+## come in no order, so no client can rely on one). A hash is never empty:
+## deleting its last field deletes the key (store/hashes.agc).
+##
+## The string helpers below answer for a string only; a command checks the
+## variant first (`string?`) and answers WRONGTYPE for the others.
 export enum Value
   Str(Bytes)
   Appended(List[Bytes], Int)
+  Hash(Map[Bytes, Bytes])
+end
+
+## The name `TYPE` and `SCAN ... TYPE` use.
+export def type_name(value: Value) -> String
+  case value
+    Value.Hash(_) -> return "hash"
+    _ -> return "string"
+  end
+end
+
+export def string?(value: Value) -> Bool
+  return type_name(value) == "string"
 end
 
 ## The bytes of a string value. For `Appended` this joins the pieces: a command
@@ -19,6 +40,7 @@ export def joined_text(value: Value) -> Bytes
   case value
     Value.Str(bytes) -> return bytes
     Value.Appended(pieces, _) -> return Bytes.concat(pieces)
+    Value.Hash(_) -> return "".bytes
   end
 end
 
@@ -27,6 +49,7 @@ export def value_size(value: Value) -> Int
   case value
     Value.Str(bytes) -> return bytes.size
     Value.Appended(_, total) -> return total
+    Value.Hash(_) -> return 0
   end
 end
 
@@ -45,6 +68,7 @@ export def with_more(value: Value, more: Bytes) -> Value
 
       return Value.Appended([bytes, more], bytes.size + more.size)
     Value.Appended(pieces, total) -> return Value.Appended(pieces.push(more), total + more.size)
+    Value.Hash(_) -> return value
   end
 end
 
@@ -53,5 +77,6 @@ export def pending?(value: Value) -> Bool
   case value
     Value.Str(_) -> return false
     Value.Appended(_, _) -> return true
+    Value.Hash(_) -> return false
   end
 end
