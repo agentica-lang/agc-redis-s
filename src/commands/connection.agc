@@ -1,12 +1,14 @@
-## Connection commands: PING and ECHO.
+## Connection commands: PING, ECHO and QUIT. Server-wide commands (INFO,
+## CLIENT, CONFIG, DBSIZE, FLUSHALL) go in a file of their own.
 
-import {Call, Command, Flag, Outcome, reply} from "command"
+import {Call, Command, Outcome, reply, reply_and_close, wrong_arity} from "command"
 import {Reply} from "../resp/reply"
 
 export def commands() -> List[Command]
   return [
-    Command(name: "ping", arity: -1, flags: [Flag.Fast], handler: &ping),
-    Command(name: "echo", arity: 2, flags: [Flag.Fast], handler: &echo),
+    Command(name: "ping", arity: -1, handler: &ping),
+    Command(name: "echo", arity: 2, handler: &echo),
+    Command(name: "quit", arity: -1, handler: &quit),
   ]
 end
 
@@ -16,7 +18,7 @@ def ping(call: Call) -> Outcome
   end
 
   if call.args.size > 1
-    return reply(call, Reply.Error("ERR wrong number of arguments for 'ping' command"))
+    return wrong_arity(call)
   end
 
   return reply(call, Reply.Bulk(call.args[0]))
@@ -24,4 +26,8 @@ end
 
 def echo(call: Call) -> Outcome
   return reply(call, Reply.Bulk(call.args[0]))
+end
+
+def quit(call: Call) -> Outcome
+  return reply_and_close(call, Reply.Simple("OK"))
 end

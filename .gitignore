@@ -1,5 +1,2 @@
 _build/
-tmp/
-deps/
-.tools/
 __pycache__/
