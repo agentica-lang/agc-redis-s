@@ -91,6 +91,15 @@ export def persist(keyspace: Keyspace, key: Bytes) -> Keyspace
   return unindexed(keyspace, key)
 end
 
+## The keys that are not expired, in no order.
+export def live_keys(keyspace: Keyspace, now_ms: Int) -> List[Bytes]
+  if keyspace.deadlines.empty?
+    return keyspace.entries.keys
+  end
+
+  return keyspace.entries.keys.select do |key| not expired?(keyspace, key, now_ms) end
+end
+
 ## The keys with a deadline, expired or not (`INFO` counts them as Redis does).
 export def expiring(keyspace: Keyspace) -> Int
   return keyspace.deadlines.size
