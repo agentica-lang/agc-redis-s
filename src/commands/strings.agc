@@ -1,8 +1,8 @@
 ## String commands: GET, SET, GETSET, GETDEL, SETNX, MGET, MSET, MSETNX, APPEND,
 ## STRLEN, GETRANGE and SETRANGE. Checked against Redis 7.2 t_string.c. The
 ## expiry options of SET (EX, PX, EXAT, PXAT) and GETEX, SETEX and PSETEX come
-## with the expiry of keys, and the INCR family in the next change. Only the
-## string type exists, so no handler answers WRONGTYPE yet.
+## with the expiry of keys; the INCR family is in numbers.agc. Only the string
+## type exists, so no handler answers WRONGTYPE yet.
 
 import Args from "args"
 import {Call, Command, Outcome, fail, reply, write} from "command"
