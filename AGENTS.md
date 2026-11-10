@@ -50,10 +50,12 @@ tools/               check_purity.py and its tests (Python, standard library)
   `commands/command.agc` (`reply`, `reply_and_close`, `fail`, `wrong_arity`,
   and `write` or `write_all` to change data), never with the constructor:
   `make purity` fails on `Outcome(` anywhere else in `src/`. `Outcome` has no
-  keyspace field, only `change`, so a new keyspace cannot be returned by a
-  helper that the store ignores. A later feature adds a field to
-  `Outcome` (or `Call`) with a default and a helper in the PR that needs it,
-  and no handler changes.
+  keyspace field, only `change`: only `write` and `write_all` carry a change,
+  and the store applies every change. The type does not stop a handler that
+  computes new data and answers with `reply`, which drops it, so review checks
+  that every handler that changes data answers with `write` or `write_all`. A
+  later feature adds a field to `Outcome` (or `Call`) with a default and a
+  helper in the PR that needs it, and no handler changes.
 - Tests: as few as needed that still cover the software well; before adding
   one ask what bug it catches that no other test catches. No BDD, no test per
   function, no near-duplicates.

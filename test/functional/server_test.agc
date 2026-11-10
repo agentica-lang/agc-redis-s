@@ -64,16 +64,24 @@ def test_config_get() -> Result[Void]
     ["CONFIG", "GET", "save"],
     ["config", "get", "APPENDONLY", "appendonly", "nope"],
     ["CONFIG", "GET", "data*"],
+    ["CONFIG", "GET", "MaxMem*"],
     ["CONFIG", "GET"],
-    ["CONFIG", "SET", "a", "b"],
+    ["CONFIG", "SET", "x", "y"],
+    ["CONFIG", "SET", "maxmemory", "1", "x", "2"],
+    ["CONFIG", "SET", "maxmemory", "1"],
+    ["CONFIG", "SET", "maxmemory"],
   ])
 
   expected = [
     "*2\r\n$4\r\nsave\r\n$0\r\n\r\n",
     "*2\r\n$10\r\nAPPENDONLY\r\n$2\r\nno\r\n",
     "*2\r\n$9\r\ndatabases\r\n$2\r\n16\r\n",
+    "*4\r\n$9\r\nmaxmemory\r\n$1\r\n0\r\n$16\r\nmaxmemory-policy\r\n$10\r\nnoeviction\r\n",
     "-ERR wrong number of arguments for 'config|get' command\r\n",
-    "-ERR unknown subcommand 'SET'. Try CONFIG HELP.\r\n",
+    "-ERR Unknown option or number of arguments for CONFIG SET - 'x'\r\n",
+    "-ERR Unknown option or number of arguments for CONFIG SET - 'x'\r\n",
+    "-ERR CONFIG SET failed (possibly related to argument 'maxmemory') - can't set immutable config\r\n",
+    "-ERR wrong number of arguments for 'config|set' command\r\n",
   ].join("")
 
   return Test.eq(result.reply, expected.bytes)
@@ -85,7 +93,7 @@ def test_command() -> Result[Void]
   result = talk([["COMMAND", "DOCS"], ["COMMAND", "COUNT"], ["COMMAND", "COUNT", "x"]])
   try Test.eq(result.reply, "*0\r\n:12\r\n-ERR wrong number of arguments for 'command|count' command\r\n".bytes)
   listed = talk([["COMMAND"]]).reply
-  entry = "*6\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n"
+  quit_entry = "*10\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n*0\r\n*0\r\n*0\r\n*0\r\n"
   try Test.assert(listed.take(5) == "*12\r\n".bytes, "one entry per command")
-  return Test.assert(listed.size > entry.bytesize * 12, "six items each")
+  return Test.assert(listed.size >= quit_entry.bytesize * 12, "ten items each")
 end

@@ -27,8 +27,9 @@ def docs(call: Call) -> Outcome
   return reply(call, Reply.Array([]))
 end
 
-# Name, arity, flags, and the first key, last key and step. No row has flags or
-# keys yet, so they are empty and 0.
+# The ten items of Redis 7.2: name, arity, flags, first key, last key, step,
+# ACL categories, tips, key specs and subcommands. No row has flags or keys
+# yet, so the lists are empty and the positions 0.
 def all(call: Call) -> Outcome
   infos = top_level(call).map do |row| info(row) end
   return reply(call, Reply.Array(infos))
@@ -42,5 +43,9 @@ def info(row: Command) -> Reply
     Reply.Integer(0),
     Reply.Integer(0),
     Reply.Integer(0),
+    Reply.Array([]),
+    Reply.Array([]),
+    Reply.Array([]),
+    Reply.Array([]),
   ])
 end
