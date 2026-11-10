@@ -1,8 +1,8 @@
 import Table from "../../src/commands/table"
+import {Exchange, exchange, run_requests, talk, to_bytes, words} from "../support"
 import {Databases, fresh, space_at} from "../../src/store/databases"
 import Keyspace from "../../src/store/keyspace"
-import {Value} from "../../src/store/value"
-import {run_requests, talk, to_bytes} from "../support"
+import {joined_text, pending?} from "../../src/store/value"
 import Prop from "pkg/prop/prop"
 
 # The model of a keyspace: key number to the bytes it holds.
@@ -157,11 +157,11 @@ end
 # Under a run of up to 14 operations from `kinds` the server answers as the
 # model does, and holds what the model holds after it. Three keys, so the
 # operations meet often.
-def follows_the_model(kinds: List[Int]) -> Result[Void]
+def follows_the_model(kinds: List[Int], runs: Int) -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 8), 14)
-  return Prop.check(ops, Prop.Config(runs: 100)) do |list|
+  return Prop.check(ops, Prop.Config(runs: runs)) do |list|
     argvs = list.map do |op| argv_of(kinds, op) end
     start = Model(state: {}, replies: [])
     model = list.reduce(start) do |acc, op| model_step(kinds, acc, op) end
@@ -175,25 +175,30 @@ end
 
 # SET (with its six flavors of NX, XX and GET), GET, APPEND, GETDEL, SETNX,
 # GETSET and STRLEN against a Map. 100 runs: the step limit is between 400 and
-# 800 for this law and between 200 and 400 for the next, a third of the lower.
+# 800 runs for this law, so a third of the lower.
 def test_whole_value_commands_follow_a_map() -> Result[Void]
-  return follows_the_model([0, 1, 2, 3, 4, 5, 7])
+  return follows_the_model([0, 1, 2, 3, 4, 5, 7], 100)
 end
 
-# SETRANGE and GETRANGE, with SET, GET and STRLEN around them, against a Map.
-# 100 runs, for the same reason.
+# SETRANGE and GETRANGE, with SET, GET, STRLEN and APPEND (which leaves pieces
+# for them to join) around them, against a Map. 65 runs: the limit is between 200 and 300.
 def test_range_commands_follow_a_map() -> Result[Void]
-  return follows_the_model([0, 6, 8, 1, 7, 6, 8])
+  return follows_the_model([0, 6, 8, 1, 7, 6, 8, 2], 65)
 end
 
 # What the server holds at key number `k`, as the model's list of numbers.
 def left_in(databases: Databases, k: Int) -> Optional[List[Int]]
   case Keyspace.get(space_at(databases, 0), name(k), 0)
     none -> return none
-    some(value) ->
-      case value
-        Value.Str(text) -> return some(text.to_a)
-      end
+    some(value) -> return some(joined_text(value).to_a)
+  end
+end
+
+# True when key `k` of the first database holds pieces not yet joined.
+def pending_at(databases: Databases, k: Int) -> Bool
+  case Keyspace.get(space_at(databases, 0), name(k), 0)
+    none -> return false
+    some(value) -> return pending?(value)
   end
 end
 
@@ -231,4 +236,41 @@ def test_commands_and_their_texts() -> Result[Void]
   ].join("")
 
   return Test.eq(result.reply, expected.bytes)
+end
+
+# The databases after one request that reads key `k0`, which holds the pieces
+# "ab", "cd" and "ef", and the reply.
+def read_pieces(request: List[String]) -> Exchange
+  start = talk([["APPEND", "k0", "ab"], ["APPEND", "k0", "cd"], ["APPEND", "k0", "ef"], ["APPEND", "k0", ""]])
+  return exchange(start.databases, words(request))
+end
+
+# APPEND keeps the pieces and the size (STRLEN is right at once, an empty
+# APPEND adds no piece); GET, MGET and GETRANGE each join them and write the
+# joined form back, so the next read finds one piece.
+def test_append_keeps_pieces_and_a_read_joins_them_once() -> Result[Void]
+  start = talk([
+    ["APPEND", "k0", "ab"],
+    ["APPEND", "k0", "cd"],
+    ["APPEND", "k0", "ef"],
+    ["APPEND", "k0", ""],
+    ["STRLEN", "k0"],
+  ])
+
+  try Test.eq(start.reply, ":2\r\n:4\r\n:6\r\n:6\r\n:6\r\n".bytes)
+  try Test.eq(pending_at(start.databases, 0), true)
+  try Test.eq(left_in(start.databases, 0).unwrap_or([]), "abcdef".bytes.to_a)
+
+  got = read_pieces(["GET", "k0"])
+  try Test.eq(got.reply, "$6\r\nabcdef\r\n".bytes)
+  try Test.eq(pending_at(got.databases, 0), false)
+  try Test.eq(left_in(got.databases, 0).unwrap_or([]), "abcdef".bytes.to_a)
+
+  many = read_pieces(["MGET", "k0", "k1"])
+  try Test.eq(many.reply, "*2\r\n$6\r\nabcdef\r\n$-1\r\n".bytes)
+  try Test.eq(pending_at(many.databases, 0), false)
+
+  ranged = read_pieces(["GETRANGE", "k0", "1", "4"])
+  try Test.eq(ranged.reply, "$4\r\nbcde\r\n".bytes)
+  return Test.eq(pending_at(ranged.databases, 0), false)
 end

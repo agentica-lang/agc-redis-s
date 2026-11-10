@@ -9,7 +9,7 @@ import {Call, Command, Outcome, fail, reply, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import Strings from "../store/strings"
-import {Value} from "../store/value"
+import {Value, joined_text, pending?, value_size, with_more} from "../store/value"
 
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 NOT_INT = "ERR value is not an integer or out of range"
@@ -45,11 +45,35 @@ end
 def lookup(call: Call, key: Bytes) -> Optional[Bytes]
   case Keyspace.get(call.keyspace, key, call.now_ms)
     none -> return none
-    some(value) ->
-      case value
-        Value.Str(text) -> return some(text)
-      end
+    some(value) -> return some(joined_text(value))
   end
+end
+
+# The size of the string at a key, 0 if missing, without joining its pieces.
+def size_of(call: Call, key: Bytes) -> Int
+  case Keyspace.get(call.keyspace, key, call.now_ms)
+    none -> return 0
+    some(value) -> return value_size(value)
+  end
+end
+
+# A read of `keys` (GET, MGET, GETRANGE) joins the pieces of an appended value
+# and writes the joined form back, so the next read copies nothing: the answer
+# is a `write` only when something was joined.
+def settle(call: Call, keys: List[Bytes]) -> Strings.Settled
+  return Strings.settle(call.keyspace, keys, call.now_ms)
+end
+
+def peek(call: Call, settled: Strings.Settled, key: Bytes) -> Optional[Bytes]
+  return lookup(call.with(keyspace: settled.keyspace), key)
+end
+
+def read_done(call: Call, settled: Strings.Settled, answer: Reply) -> Outcome
+  if settled.changed
+    return write(call, settled.keyspace, answer)
+  end
+
+  return reply(call, answer)
 end
 
 def bulk_or_nil(value: Optional[Bytes]) -> Reply
@@ -60,7 +84,8 @@ def bulk_or_nil(value: Optional[Bytes]) -> Reply
 end
 
 def get(call: Call) -> Outcome
-  return reply(call, bulk_or_nil(lookup(call, call.args[0])))
+  settled = settle(call, [call.args[0]])
+  return read_done(call, settled, bulk_or_nil(peek(call, settled, call.args[0])))
 end
 
 def set_options(words: List[Bytes]) -> SetOptions
@@ -133,7 +158,8 @@ def setnx(call: Call) -> Outcome
 end
 
 def mget(call: Call) -> Outcome
-  return reply(call, Reply.Array(call.args.map do |key| bulk_or_nil(lookup(call, key)) end))
+  settled = settle(call, call.args)
+  return read_done(call, settled, Reply.Array(call.args.map do |key| bulk_or_nil(peek(call, settled, key)) end))
 end
 
 # The arguments are keys and values in pairs; a lone key is an arity error.
@@ -179,18 +205,21 @@ def put_pairs(keyspace: Keyspace.Keyspace, words: List[Bytes]) -> Keyspace.Keysp
   return result
 end
 
+# The pieces are kept, not joined: see `Value`. The size check uses the stored
+# size.
 def append(call: Call) -> Outcome
-  old = lookup(call, call.args[0]).unwrap_or("".bytes)
-  if old.size + call.args[1].size > Strings.MAX_BYTES
+  key = call.args[0]
+  more = call.args[1]
+  if size_of(call, key) + more.size > Strings.MAX_BYTES
     return fail(call, TOO_BIG)
   end
 
-  joined = old + call.args[1]
-  return write(call, Keyspace.put(call.keyspace, call.args[0], Value.Str(joined)), Reply.Integer(joined.size))
+  grown = with_more(Keyspace.get(call.keyspace, key, call.now_ms).unwrap_or(Value.Str("".bytes)), more)
+  return write(call, Keyspace.put(call.keyspace, key, grown), Reply.Integer(value_size(grown)))
 end
 
 def strlen(call: Call) -> Outcome
-  return reply(call, Reply.Integer(lookup(call, call.args[0]).unwrap_or("".bytes).size))
+  return reply(call, Reply.Integer(size_of(call, call.args[0])))
 end
 
 def getrange(call: Call) -> Outcome
@@ -200,8 +229,9 @@ def getrange(call: Call) -> Outcome
       case Args.parse_int(call.args[2])
         none -> return fail(call, NOT_INT)
         some(stop) ->
-          text = lookup(call, call.args[0]).unwrap_or("".bytes)
-          return reply(call, Reply.Bulk(Strings.get_range(text, start, stop)))
+          settled = settle(call, [call.args[0]])
+          text = peek(call, settled, call.args[0]).unwrap_or("".bytes)
+          return read_done(call, settled, Reply.Bulk(Strings.get_range(text, start, stop)))
       end
   end
 end
@@ -215,19 +245,19 @@ def setrange(call: Call) -> Outcome
     some(offset) ->
       key = call.args[0]
       value = call.args[2]
-      old = lookup(call, key).unwrap_or("".bytes)
       if offset < 0
         return fail(call, "ERR offset is out of range")
       end
 
       if value.empty?
-        return reply(call, Reply.Integer(old.size))
+        return reply(call, Reply.Integer(size_of(call, key)))
       end
 
       if offset > Strings.MAX_BYTES - value.size
         return fail(call, TOO_BIG)
       end
 
+      old = lookup(call, key).unwrap_or("".bytes)
       grown = Strings.set_range(old, offset, value)
       return write(call, Keyspace.put(call.keyspace, key, Value.Str(grown)), Reply.Integer(grown.size))
   end
