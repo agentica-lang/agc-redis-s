@@ -1,6 +1,7 @@
 ## HSCAN (t_hash.c hscanCommand, db.c scanGenericCommand). Each page sorts the
 ## field names by their hash, as SCAN does with the keys: O(n log n) per call.
 
+import Errors from "../errors"
 import Scan from "../scan"
 import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
@@ -19,7 +20,7 @@ end
 # follows COUNT, which the protocol allows.
 def hscan(call: Call) -> Outcome
   case Scan.cursor_of(call.args[1])
-    none -> return fail(call, "ERR invalid cursor")
+    none -> return fail(call, Errors.INVALID_CURSOR)
     some(cursor) ->
       case Hashes.held(call.keyspace, call.args[0], call.now_ms)
         Held.Foreign -> return wrong_type(call)

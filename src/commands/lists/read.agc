@@ -1,14 +1,13 @@
 ## LLEN, LINDEX and LRANGE (t_list.c). LLEN and LINDEX cost one `Map` step,
 ## LRANGE one per element returned.
 
-import Args from "../args"
+import Errors from "../errors"
+import Integer from "../../resp/integer"
 import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Replies from "replies"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
-
-NOT_INT = "ERR value is not an integer or out of range"
 
 export def commands() -> List[Command]
   return [
@@ -34,8 +33,8 @@ def lindex(call: Call) -> Outcome
     Held.Missing -> return reply(call, Reply.NilBulk)
     Held.Foreign -> return wrong_type(call)
     Held.Items(seq) ->
-      case Args.parse_int(call.args[1])
-        none -> return fail(call, NOT_INT)
+      case Integer.parse(call.args[1])
+        none -> return fail(call, Errors.NOT_INT)
         some(index) -> return reply(call, element_or_nil(seq, index))
       end
   end
@@ -56,11 +55,11 @@ end
 # Both numbers are read first; then a missing key is an empty array, and only
 # then the type is checked.
 def lrange(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(start) ->
-      case Args.parse_int(call.args[2])
-        none -> return fail(call, NOT_INT)
+      case Integer.parse(call.args[2])
+        none -> return fail(call, Errors.NOT_INT)
         some(stop) ->
           case Lists.held(call.keyspace, call.args[0], call.now_ms)
             Held.Missing -> return reply(call, Reply.Array([]))

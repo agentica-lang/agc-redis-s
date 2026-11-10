@@ -5,19 +5,14 @@
 ## (string2ll, string2ld, ld2string). The number is kept as its text, as Redis
 ## shows it: a value built by APPEND is joined here, and written back anyway.
 
-import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {Call, Command, Outcome, fail, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import LongDouble from "../store/long_double"
 import Strings from "../store/strings"
 import {Value, joined_text} from "../store/value"
-
-NOT_INT = "ERR value is not an integer or out of range"
-NOT_FLOAT = "ERR value is not a valid float"
-OVERFLOW = "ERR increment or decrement would overflow"
-INT_MAX = 9_223_372_036_854_775_807
-INT_MIN = -9_223_372_036_854_775_807 - 1
 
 export def commands() -> List[Command]
   return [
@@ -40,18 +35,18 @@ end
 # The increment is read before the key, so a bad one wins over a bad value
 # (and over WRONGTYPE).
 def incrby(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(delta) -> return add_to(call, delta)
   end
 end
 
 # Negating the least Int would overflow, so Redis refuses it first.
 def decrby(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(delta) ->
-      if delta == INT_MIN
+      if delta == Integer.INT_MIN
         return fail(call, "ERR decrement would overflow")
       end
 
@@ -75,11 +70,14 @@ def add_to(call: Call, delta: Int) -> Outcome
     return wrong_type(call)
   end
 
-  case Args.parse_int(held_text(call, key))
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(held_text(call, key))
+    none -> return fail(call, Errors.NOT_INT)
     some(old) ->
-      if (delta < 0 and old < 0 and delta < INT_MIN - old) or (delta > 0 and old > 0 and delta > INT_MAX - old)
-        return fail(call, OVERFLOW)
+      if (
+        (delta < 0 and old < 0 and delta < Integer.INT_MIN - old) or
+        (delta > 0 and old > 0 and delta > Integer.INT_MAX - old)
+      )
+        return fail(call, Errors.OVERFLOW)
       end
 
       total = old + delta
@@ -100,10 +98,10 @@ def incrbyfloat(call: Call) -> Outcome
   end
 
   case LongDouble.parse(held_text(call, key))
-    none -> return fail(call, NOT_FLOAT)
+    none -> return fail(call, Errors.NOT_FLOAT)
     some(old) ->
       case LongDouble.parse(call.args[1])
-        none -> return fail(call, NOT_FLOAT)
+        none -> return fail(call, Errors.NOT_FLOAT)
         some(delta) -> return float_sum(call, key, LongDouble.add(old, delta))
       end
   end
@@ -111,7 +109,7 @@ end
 
 def float_sum(call: Call, key: Bytes, total: Optional[LongDouble.Ext]) -> Outcome
   case total
-    none -> return fail(call, "ERR increment would produce NaN or Infinity")
+    none -> return fail(call, Errors.NAN_OR_INFINITY)
     some(sum) ->
       shown = LongDouble.format(sum)
       return write(call, Keyspace.put(call.keyspace, key, Value.Str(shown), call.now_ms), Reply.Bulk(shown))

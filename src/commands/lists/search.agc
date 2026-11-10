@@ -3,13 +3,13 @@
 ## stops at MAXLEN elements scanned (0 is no limit): O(n).
 
 import Args from "../args"
+import Errors from "../errors"
+import Integer from "../../resp/integer"
 import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
-NOT_INT = "ERR value is not an integer or out of range"
-INT_MAX = 9_223_372_036_854_775_807
 NO_COUNT = -1
 
 # `count` is -1 when COUNT was not given.
@@ -51,7 +51,7 @@ def options_of(words: List[Bytes]) -> Result[Options]
   while i < words.size
     name = Args.lower(words[i])
     if i + 1 >= words.size or (name != "rank" and name != "count" and name != "maxlen")
-      return error("ERR syntax error")
+      return error(Errors.SYNTAX)
     end
 
     options = try with_option(options, name, words[i + 1])
@@ -75,11 +75,11 @@ end
 
 # Between -(2^63 - 1) and 2^63 - 1, and not zero.
 def rank_of(text: Bytes) -> Result[Int]
-  case Args.parse_int(text)
-    none -> return error(NOT_INT)
+  case Integer.parse(text)
+    none -> return error(Errors.NOT_INT)
     some(rank) ->
-      if rank < 0 - INT_MAX
-        return error("ERR value is out of range, value must between -9223372036854775807 and 9223372036854775807")
+      if rank < 0 - Integer.INT_MAX
+        return error(Errors.LONG_RANGE)
       end
 
       if rank == 0

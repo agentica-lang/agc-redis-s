@@ -1,53 +1,7 @@
 ## Reading the arguments of a command, with Redis's rules.
 
-MIN_DIV_10 = -922_337_203_685_477_580
-INT_MIN = -9_223_372_036_854_775_807 - 1
-INT_MAX = 9_223_372_036_854_775_807
-NOT_INT = "ERR value is not an integer or out of range"
-
-## An integer as Redis's `string2ll` reads it: digits only, one optional `-`, no
-## `+`, no space, no leading zero (`0` alone is fine, `-0` is not), and it must
-## fit in 64 bits. `none` otherwise.
-export def parse_int(text: Bytes) -> Optional[Int]
-  if text.empty?
-    return none
-  end
-
-  negative = text[0] == 45
-  digits = text
-  if negative
-    digits = text.drop(1)
-  end
-
-  if digits.empty? or (digits[0] == 48 and (digits.size > 1 or negative))
-    return none
-  end
-
-  # Summed as a negative number: its range holds the magnitude of INT_MIN.
-  total = 0
-  for byte in digits
-    if byte < 48 or byte > 57
-      return none
-    end
-
-    digit = byte - 48
-    if total < MIN_DIV_10 or (total == MIN_DIV_10 and digit > 8)
-      return none
-    end
-
-    total = total * 10 - digit
-  end
-
-  if negative
-    return some(total)
-  end
-
-  if total == INT_MIN
-    return none
-  end
-
-  return some(-total)
-end
+import Errors from "errors"
+import Integer from "../resp/integer"
 
 ## The word as lowercase text, for matching option names without case. Latin-1
 ## maps every byte to a character, so this never fails.
@@ -89,10 +43,10 @@ end
 ## ms (Redis's `getExpireMillisecondsOrReply`): it must be a positive integer.
 ## `relative` (EX, PX) adds the clock. The error is the whole reply text.
 export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, command: String) -> Result[Int]
-  case parse_int(text)
-    none -> return error(NOT_INT)
+  case Integer.parse(text)
+    none -> return error(Errors.NOT_INT)
     some(value) ->
-      if value <= 0 or (seconds and value > INT_MAX / 1000)
+      if value <= 0 or (seconds and value > Integer.INT_MAX / 1000)
         return bad_expire(command)
       end
 
@@ -102,7 +56,7 @@ export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, co
       end
 
       # The sum is compared first: an Int that overflows halts.
-      if relative and ms > INT_MAX - now_ms
+      if relative and ms > Integer.INT_MAX - now_ms
         return bad_expire(command)
       end
 
@@ -118,19 +72,19 @@ end
 ## also a negative one. `base_ms` is the clock for EXPIRE and PEXPIRE, 0 for
 ## the AT forms.
 export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String) -> Result[Int]
-  case parse_int(text)
-    none -> return error(NOT_INT)
+  case Integer.parse(text)
+    none -> return error(Errors.NOT_INT)
     some(value) ->
       ms = value
       if seconds
-        if value > INT_MAX / 1000 or value < INT_MIN / 1000
+        if value > Integer.INT_MAX / 1000 or value < Integer.INT_MIN / 1000
           return bad_expire(command)
         end
 
         ms = value * 1000
       end
 
-      if ms > INT_MAX - base_ms
+      if ms > Integer.INT_MAX - base_ms
         return bad_expire(command)
       end
 
@@ -141,7 +95,7 @@ end
 ## A number that is zero or more (Redis's `getPositiveLongFromObjectOrReply`):
 ## the same `message` answers a word that is no number and a negative one.
 export def positive(text: Bytes, message: String) -> Result[Int]
-  case parse_int(text)
+  case Integer.parse(text)
     none -> return error(message)
     some(value) ->
       if value < 0
@@ -155,7 +109,7 @@ end
 ## A number that is one or more (`getRangeLongFromObjectOrReply` from 1): the
 ## same `message` answers a word and a number below 1.
 export def at_least_one(text: Bytes, message: String) -> Result[Int]
-  case parse_int(text)
+  case Integer.parse(text)
     none -> return error(message)
     some(value) ->
       if value < 1

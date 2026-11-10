@@ -3,13 +3,12 @@
 ## Redis does. A list left empty deletes its key.
 
 import Args from "../args"
+import Errors from "../errors"
+import Integer from "../../resp/integer"
 import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
-
-NOT_INT = "ERR value is not an integer or out of range"
-INT_MIN = -9_223_372_036_854_775_807 - 1
 
 export def commands() -> List[Command]
   return [
@@ -23,11 +22,11 @@ end
 # The key is looked up first, then the type, then the index is read.
 def lset(call: Call) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return fail(call, "ERR no such key")
+    Held.Missing -> return fail(call, Errors.NO_SUCH_KEY)
     Held.Foreign -> return wrong_type(call)
     Held.Items(seq) ->
-      case Args.parse_int(call.args[1])
-        none -> return fail(call, NOT_INT)
+      case Integer.parse(call.args[1])
+        none -> return fail(call, Errors.NOT_INT)
         some(index) -> return set_at(call, seq, index)
       end
   end
@@ -49,11 +48,11 @@ end
 
 # Both numbers first; a missing key answers OK.
 def ltrim(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(start) ->
-      case Args.parse_int(call.args[2])
-        none -> return fail(call, NOT_INT)
+      case Integer.parse(call.args[2])
+        none -> return fail(call, Errors.NOT_INT)
         some(stop) ->
           case Lists.held(call.keyspace, call.args[0], call.now_ms)
             Held.Missing -> return reply(call, Reply.Simple("OK"))
@@ -80,7 +79,7 @@ end
 def linsert(call: Call) -> Outcome
   where = Args.lower(call.args[1])
   if where != "after" and where != "before"
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
@@ -116,8 +115,8 @@ end
 # negative one from the tail, 0 removes all. Redis negates the count, so the
 # smallest Int wraps and removes all from the tail.
 def lrem(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(count) ->
       case Lists.held(call.keyspace, call.args[0], call.now_ms)
         Held.Missing -> return reply(call, Reply.Integer(0))
@@ -129,11 +128,11 @@ end
 
 def removed(call: Call, elements: List[Bytes], count: Int) -> Outcome
   limit = count
-  if count < 0 and count != INT_MIN
+  if count < 0 and count != Integer.INT_MIN
     limit = 0 - count
   end
 
-  if count == INT_MIN
+  if count == Integer.INT_MIN
     limit = 0
   end
 

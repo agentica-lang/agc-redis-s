@@ -3,6 +3,7 @@
 ## getFlushCommandFlags, flushallCommand, flushdbCommand).
 
 import Args from "args"
+import Errors from "errors"
 import {Call, Command, Outcome, fail, reply, write, write_all} from "command"
 import Connection from "connection"
 import {Reply} from "../resp/reply"
@@ -38,7 +39,7 @@ end
 # Everything goes at once, so ASYNC and SYNC are the same.
 def flushall(call: Call) -> Outcome
   if call.args.size > 1 or (call.args.size == 1 and not flush_mode?(call.args[0]))
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   return write_all(call, Databases.fresh(), Reply.Simple("OK"))
@@ -46,7 +47,7 @@ end
 
 def flushdb(call: Call) -> Outcome
   if call.args.size > 1 or (call.args.size == 1 and not flush_mode?(call.args[0]))
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   return write(call, Keyspace.Keyspace(), Reply.Simple("OK"))

@@ -6,6 +6,8 @@
 ## swapdbCommand). An expired key counts as missing.
 
 import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {Call, Command, Outcome, fail, reply, write, write_all} from "command"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
@@ -100,7 +102,7 @@ end
 def rename_generic(call: Call, only_new: Bool) -> Outcome
   from = call.args[0]
   case Keyspace.get(call.keyspace, from, call.now_ms)
-    none -> return fail(call, "ERR no such key")
+    none -> return fail(call, Errors.NO_SUCH_KEY)
     some(value) -> return move_key(call, only_new, value)
   end
 end
@@ -141,11 +143,11 @@ end
 # `getIntFromObjectOrReply`: a C int. `message` is the text for every failure,
 # or none for Redis's two defaults (not an integer, and not in the range of an int).
 def int_of(word: Bytes, message: Optional[String]) -> Result[Int]
-  case Args.parse_int(word)
-    none -> return error(message.unwrap_or("ERR value is not an integer or out of range"))
+  case Integer.parse(word)
+    none -> return error(message.unwrap_or(Errors.NOT_INT))
     some(value) ->
       if value < -2_147_483_648 or value > 2_147_483_647
-        return error(message.unwrap_or("ERR value is out of range, value must between -2147483648 and 2147483647"))
+        return error(message.unwrap_or(Errors.INT_RANGE))
       end
 
       return ok(value)
@@ -158,7 +160,7 @@ def database_index(word: Bytes) -> Result[Int]
     error(text) -> return error(text)
     ok(index) ->
       if index < 0 or index >= Databases.COUNT
-        return error("ERR DB index is out of range")
+        return error(Errors.DB_RANGE)
       end
 
       return ok(index)
@@ -176,7 +178,7 @@ end
 # the other has no such key.
 def move_to(call: Call, target: Int) -> Outcome
   if target == call.session.db
-    return fail(call, "ERR source and destination objects are the same")
+    return fail(call, Errors.SAME_OBJECT)
   end
 
   key = call.args[0]
@@ -210,7 +212,7 @@ def copy_options(call: Call) -> Copying
 
       i += 1
     else
-      return found.with(refused: some("ERR syntax error"))
+      return found.with(refused: some(Errors.SYNTAX))
     end
 
     i += 1
@@ -229,7 +231,7 @@ def copy(call: Call) -> Outcome
 
   key = call.args[0]
   if found.db == call.session.db and key == call.args[1]
-    return fail(call, "ERR source and destination objects are the same")
+    return fail(call, Errors.SAME_OBJECT)
   end
 
   there = Databases.space_at(call.databases, found.db)
@@ -270,7 +272,7 @@ end
 
 def swap_checked(call: Call, first: Int, second: Int) -> Outcome
   if first < 0 or first >= Databases.COUNT or second < 0 or second >= Databases.COUNT
-    return fail(call, "ERR DB index is out of range")
+    return fail(call, Errors.DB_RANGE)
   end
 
   one = Databases.space_at(call.databases, first)

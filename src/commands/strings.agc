@@ -10,6 +10,8 @@
 ## value (APPEND, SETRANGE, INCR) keeps it (`Keyspace.put`).
 
 import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {Call, Command, Outcome, fail, reply, wrong_type, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
@@ -17,7 +19,6 @@ import Strings from "../store/strings"
 import {Value, joined_text, pending?, string?, value_size} from "../store/value"
 
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
-NOT_INT = "ERR value is not an integer or out of range"
 
 # SET key value [NX | XX] [GET] [KEEPTTL | EX s | PX ms | EXAT s | PXAT ms], and
 # GETEX key [PERSIST | EX | PX | EXAT | PXAT] with the same time words. With GET
@@ -193,7 +194,7 @@ end
 def set(call: Call) -> Outcome
   found = options(call.args.drop(2), true)
   if not found.valid
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   case deadline_of(call, found)
@@ -265,7 +266,7 @@ end
 def getex(call: Call) -> Outcome
   found = options(call.args.drop(1), false)
   if not found.valid
-    return fail(call, "ERR syntax error")
+    return fail(call, Errors.SYNTAX)
   end
 
   key = call.args[0]
@@ -411,11 +412,11 @@ def strlen(call: Call) -> Outcome
 end
 
 def getrange(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(start) ->
-      case Args.parse_int(call.args[2])
-        none -> return fail(call, NOT_INT)
+      case Integer.parse(call.args[2])
+        none -> return fail(call, Errors.NOT_INT)
         some(stop) ->
           if foreign?(call, call.args[0])
             return wrong_type(call)
@@ -432,8 +433,8 @@ end
 # stays missing. The size check comes before any copy, so a huge offset costs
 # nothing when it is refused.
 def setrange(call: Call) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, NOT_INT)
+  case Integer.parse(call.args[1])
+    none -> return fail(call, Errors.NOT_INT)
     some(offset) ->
       key = call.args[0]
       value = call.args[2]

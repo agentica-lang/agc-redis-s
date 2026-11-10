@@ -4,6 +4,8 @@
 ## be empty with a cursor that is not 0), and an expired key is never listed.
 
 import Args from "args"
+import Errors from "errors"
+import Integer from "../resp/integer"
 import {Call, Command, Outcome, fail, reply} from "command"
 import {Reply} from "../resp/reply"
 import Glob from "../store/glob"
@@ -45,11 +47,11 @@ export def read_options(words: List[Bytes], typed: Bool) -> Options
     word = Args.lower(words[i])
     has_value = i + 1 < words.size
     if word == "count" and has_value
-      case Args.parse_int(words[i + 1])
-        none -> return found.with(refused: some("ERR value is not an integer or out of range"))
+      case Integer.parse(words[i + 1])
+        none -> return found.with(refused: some(Errors.NOT_INT))
         some(count) ->
           if count < 1
-            return found.with(refused: some("ERR syntax error"))
+            return found.with(refused: some(Errors.SYNTAX))
           end
 
           found = found.with(count: count)
@@ -59,7 +61,7 @@ export def read_options(words: List[Bytes], typed: Bool) -> Options
     elsif word == "type" and has_value and typed
       found = found.with(type: some(Args.lower(words[i + 1])))
     else
-      return found.with(refused: some("ERR syntax error"))
+      return found.with(refused: some(Errors.SYNTAX))
     end
 
     i += 2
@@ -104,7 +106,7 @@ end
 
 def scan(call: Call) -> Outcome
   case cursor_of(call.args[0])
-    none -> return fail(call, "ERR invalid cursor")
+    none -> return fail(call, Errors.INVALID_CURSOR)
     some(cursor) -> return scan_from(call, cursor)
   end
 end
