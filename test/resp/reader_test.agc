@@ -66,6 +66,8 @@ def test_inline_quoting() -> Result[Void]
   try split_is("\"\" ''", ["".bytes, "".bytes])
   try split_is(" a \t  b\t", ["a".bytes, "b".bytes])
   try split_is("a\"b c\"", ["ab c".bytes])
+  # Hex digits of both cases, at the ends of each range.
+  try split_is("\"\\x4A\\x4a\\x4F\\x4f\"", ["JJOO".bytes])
   # Single quotes keep the backslash; a bad \x is the letter; others are themselves.
   try split_is("'a\\n' \"\\x4 \\q\"", ["a\\n".bytes, "x4 q".bytes])
   try unbalanced("\"abc\"def")
@@ -112,7 +114,7 @@ def read_args(read: Read) -> String
 end
 
 # What `request` writes the reader reads back, for any bytes: empty, binary,
-# with CR LF. 200 runs (the step budget allows over 400).
+# with CR LF. 200 runs: the step budget of a test ends between 600 and 800.
 def test_a_request_reads_back() -> Result[Void]
   return Prop.check(argv_gen(8, 4), Prop.Config(runs: 200)) do |items|
     sent = request(items.map do |xs| to_bytes(xs) end)
@@ -122,7 +124,7 @@ def test_a_request_reads_back() -> Result[Void]
 end
 
 # Quoting any bytes as Redis's `sdscatrepr` does and splitting the line gives
-# them back. 200 runs (the step budget allows over 400).
+# them back. 200 runs: the step budget of a test ends between 600 and 800.
 def test_quoted_arguments_split_back() -> Result[Void]
   return Prop.check(argv_gen(8, 4), Prop.Config(runs: 200)) do |items|
     quoted = items.map do |xs| quote(to_bytes(xs)) + " ".bytes end

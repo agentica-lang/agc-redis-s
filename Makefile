@@ -8,9 +8,13 @@ SOURCES = agc_redis_s.agc src test
 
 .PHONY: install check fmt-check lint purity test integration
 
-# Fetches the packages of agentica.lock into deps/.
-install:
+# Fetches the packages of agentica.lock into deps/. The stamp makes it a no-op
+# until the lock changes. With a warm cache `agentica install` needs no network.
+install: deps/.installed
+
+deps/.installed: agentica.lock
 	@agentica install
+	@touch deps/.installed
 
 check: purity install
 	@agentica check $(SOURCES)

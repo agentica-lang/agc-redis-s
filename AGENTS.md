@@ -69,9 +69,10 @@ tools/               check_purity.py and its tests (Python, standard library)
     generated value must be JSON (`prop` prints a counterexample as JSON), so
     generate `List[Int]` for bytes (`byte_list`, `to_bytes` in
     `test/support.agc`) and compare with `Prop.eq` on text. A test has a budget
-    of about 2.5 million steps: count the cost of one case, try `runs` at four
-    times the value, keep a third to a half of what fits, and write the number
-    in the comment above the test. Laws over models (a `Map` or a `List`) are
+    of about 2.5 million steps. Raise `runs` until the test fails with
+    `RUNTIME-STEP-LIMIT`, then use a third of that number (at most a few
+    hundred, so a test stays under a second), and write both numbers in the
+    comment above the test. Laws over models (a `Map` or a `List`) are
     for the data types.
   - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
     proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
