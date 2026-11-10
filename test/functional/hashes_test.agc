@@ -133,3 +133,141 @@ def test_scan_type_hash() -> Result[Void]
     "*2\r\n$1\r\n0\r\n*1\r\n$1\r\nh\r\n*2\r\n$1\r\n0\r\n*1\r\n$1\r\ns\r\n",
   )
 end
+
+# The listings come in the order the fields were first set; a missing key is an
+# empty array.
+def test_listings() -> Result[Void]
+  got = ask([
+    ["HSET", "h", "b", "1", "a", "2", "c", "3"],
+    ["HSET", "h", "b", "9"],
+    ["HDEL", "h", "a"],
+    ["HSET", "h", "a", "7"],
+    ["HGETALL", "h"],
+    ["HKEYS", "h"],
+    ["HVALS", "h"],
+    ["HGETALL", "none"],
+    ["HKEYS", "none"],
+    ["HVALS", "none"],
+  ])
+
+  want = [
+    ":3", ":0", ":1", ":1", "*6\r\n$1\r\nb\r\n$1\r\n9\r\n$1\r\nc\r\n$1\r\n3\r\n$1\r\na\r\n$1\r\n7",
+    "*3\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\na", "*3\r\n$1\r\n9\r\n$1\r\n3\r\n$1\r\n7", "*0", "*0", "*0",
+  ]
+
+  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+end
+
+# HINCRBY: a missing key or field starts at 0; the increment is read first; a
+# field that is no integer and an overflow are refused with Redis's texts.
+def test_hincrby() -> Result[Void]
+  got = ask([
+    ["HINCRBY", "h", "a", "5"],
+    ["HINCRBY", "h", "a", "-7"],
+    ["HSET", "h", "t", "x", "m", "9223372036854775807", "n", "-9223372036854775808"],
+    ["HINCRBY", "h", "t", "1"],
+    ["HINCRBY", "h", "m", "1"],
+    ["HINCRBY", "h", "n", "-1"],
+    ["HINCRBY", "h", "m", "-1"],
+    ["HINCRBY", "h", "a", "x"],
+    ["HINCRBY", "h", "a", "1.5"],
+    ["HGET", "h", "a"],
+    ["SET", "s", "1"],
+    ["HINCRBY", "s", "a", "1"],
+    ["HINCRBY", "s", "a", "x"],
+  ])
+
+  want = [
+    ":5",
+    ":-2",
+    ":3",
+    "-ERR hash value is not an integer",
+    "-ERR increment or decrement would overflow",
+    "-ERR increment or decrement would overflow",
+    ":9223372036854775806",
+    "-ERR value is not an integer or out of range",
+    "-ERR value is not an integer or out of range",
+    "$2\r\n-2",
+    "+OK",
+    WRONGTYPE.trim,
+    "-ERR value is not an integer or out of range",
+  ]
+
+  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+end
+
+# HINCRBYFLOAT sums as INCRBYFLOAT does and stores the text it answers; an
+# infinite increment, a field that is no float and a bad increment are refused.
+def test_hincrbyfloat() -> Result[Void]
+  got = ask([
+    ["HINCRBYFLOAT", "h", "a", "10.5"],
+    ["HINCRBYFLOAT", "h", "a", "-0.25"],
+    ["HINCRBYFLOAT", "h", "a", "5.0e3"],
+    ["HSET", "h", "t", "x", "i", "inf", "n", "7"],
+    ["HINCRBYFLOAT", "h", "n", "0.5"],
+    ["HINCRBYFLOAT", "h", "t", "1"],
+    ["HINCRBYFLOAT", "h", "i", "1"],
+    ["HINCRBYFLOAT", "h", "a", "inf"],
+    ["HINCRBYFLOAT", "h", "a", "x"],
+    ["HGET", "h", "a"],
+    ["SET", "s", "1"],
+    ["HINCRBYFLOAT", "s", "a", "1"],
+  ])
+
+  want = [
+    "$4\r\n10.5",
+    "$5\r\n10.25",
+    "$7\r\n5010.25",
+    ":3",
+    "$3\r\n7.5",
+    "-ERR hash value is not a float",
+    "-ERR increment would produce NaN or Infinity",
+    "-ERR value is NaN or Infinity",
+    "-ERR value is not a valid float",
+    "$7\r\n5010.25",
+    "+OK",
+    WRONGTYPE.trim,
+  ]
+
+  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+end
+
+# What a client sees first on a hash key: the number or the option is checked
+# before the type, except for GETEX, which checks the type before the time.
+def test_error_order_on_a_hash_key() -> Result[Void]
+  got = ask([
+    ["HSET", "h", "f", "1"],
+    ["SETRANGE", "h", "x", "v"],
+    ["SETRANGE", "h", "-1", "v"],
+    ["GETRANGE", "h", "a", "b"],
+    ["SET", "h", "v", "EX", "0", "GET"],
+    ["GETEX", "h", "EX", "0"],
+    ["GETEX", "h", "BAD"],
+  ])
+
+  want = [
+    ":1",
+    "-ERR value is not an integer or out of range",
+    "-ERR offset is out of range",
+    "-ERR value is not an integer or out of range",
+    "-ERR invalid expire time in 'set' command",
+    WRONGTYPE.trim,
+    "-ERR syntax error",
+  ]
+
+  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+end
+
+# Deleting the last field deletes the key, so a hash made later has no
+# deadline.
+def test_last_field_drops_the_deadline() -> Result[Void]
+  got = ask([
+    ["HSET", "h", "a", "1"],
+    ["PEXPIRE", "h", "100000"],
+    ["HDEL", "h", "a"],
+    ["HSET", "h", "a", "1"],
+    ["TTL", "h"],
+  ])
+
+  return Test.eq(got, ":1\r\n:1\r\n:1\r\n:1\r\n:-1\r\n")
+end
