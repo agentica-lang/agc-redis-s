@@ -9,6 +9,9 @@ LF = 10
 CR = 13
 DOLLAR = 36
 STAR = 42
+MINUS = 45
+ZERO = 48
+NINE = 57
 
 export enum Read
   ## One request; `next` is the offset after it.
@@ -63,7 +66,22 @@ def line_text(buf: Bytes, from: Int, lf: Int) -> Bytes
   return buf.slice(from, stop - from)
 end
 
+# The numbers of Redis's string2ll: an optional minus, no plus, no space, no
+# underscore, and no leading zero ("0" alone is fine, "-0" and "03" are not).
 def parse_int(text: Bytes) -> Optional[Int]
+  if text == "0".bytes
+    return some(0)
+  end
+
+  digits = text
+  if not text.empty? and text[0] == MINUS
+    digits = text.drop(1)
+  end
+
+  if digits.empty? or digits[0] == ZERO or not digits.to_a.all? do |b| b >= ZERO and b <= NINE end
+    return none
+  end
+
   case String.from_bytes(text)
     error(_) -> return none
     ok(s) ->
@@ -82,12 +100,34 @@ def read_inline(buf: Bytes, from: Int) -> Read
 end
 
 def inline_request(line: Bytes, next: Int) -> Read
-  words = String.from_bytes(line).unwrap_or("").split(" ").select do |w| w != "" end
+  words = split_words(line)
   if words.empty?
     return Read.Skip(next)
   end
 
-  return Read.Request(words.map do |w| w.bytes end, next)
+  return Read.Request(words, next)
+end
+
+# Words are bytes: an argument that is not UTF-8 is still an argument. The
+# separators are the C isspace set, as in Redis.
+def split_words(line: Bytes) -> List[Bytes]
+  words: List[Bytes] = []
+  start = 0
+  for i in 0..line.size
+    if i == line.size or space?(line[i])
+      if i > start
+        words = words.push(line.slice(start, i - start))
+      end
+
+      start = i + 1
+    end
+  end
+
+  return words
+end
+
+def space?(byte: Int) -> Bool
+  return byte == 32 or (byte >= 9 and byte <= 13)
 end
 
 def read_array(buf: Bytes, from: Int) -> Read
@@ -144,7 +184,8 @@ def read_bulk(buf: Bytes, from: Int) -> Bulk
   end
 end
 
-# The payload is `n` bytes and then CR LF, which is skipped without a check.
+# The payload is `n` bytes and then CR LF, which is skipped without a check, as
+# Redis does.
 def bulk_slice(buf: Bytes, n: Int, start: Int) -> Bulk
   if n < 0 or n > MAX_BULK
     return Bulk.Bad("Protocol error: invalid bulk length")

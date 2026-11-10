@@ -25,6 +25,13 @@ class PurityTest(unittest.TestCase):
     def test_a_new_folder_is_checked(self):
         self.assertTrue(problems_for({"src/hashes/a.agc": "def f() -> Void\n  puts(1)\nend\n"}))
 
+    def test_missing_src_fails(self):
+        self.assertTrue(problems_for({"README.md": "x"}))
+
+    def test_heredoc_cannot_hide_a_call(self):
+        text = 'x = <<~EOS\n  say "hi\nEOS\nTime.now_ms()\ny = "a"\n'
+        self.assertTrue(problems_for({"src/store/a.agc": text}))
+
     def test_impure_call_fails(self):
         self.assertTrue(problems_for({"src/store/a.agc": "def f() -> Int\n  return Time.now_ms()\nend\n"}))
 

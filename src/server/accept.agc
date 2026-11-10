@@ -4,6 +4,7 @@ import Connection from "connection"
 import {Message} from "message"
 
 ACCEPT_MS = 1000
+ACCEPT_RETRY_MS = 100
 
 ## Runs until the store task stops, which closes `inbox` (see main). A task
 ## that ends puts a code in `downs`: its id when it crashed, the negative id
@@ -21,7 +22,8 @@ export def accept_loop(listener: Listener, inbox: Channel[Message], downs: Chann
         sockets = sockets.put(next_id, socket)
         start(socket, inbox, downs, next_id)
         next_id += 1
-      error(_) -> nil
+      # A lasting error (no free fds) must not turn this loop into a spin.
+      error(_) -> Task.sleep(ACCEPT_RETRY_MS)
     end
 
     sockets = reap(sockets, inbox, downs)

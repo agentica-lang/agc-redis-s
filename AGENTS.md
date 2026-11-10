@@ -22,8 +22,11 @@ src/
   server/            I/O SHELL: sockets, tasks, the clock. config, accept,
                      connection (reader task), writer (writer task),
                      store_task (owns the data), message, clock
-test/                unit tests (`*_test.agc`), the same path as the source;
-                     support.agc holds the helpers they share
+test/functional/     one `<domain>_test.agc` per domain (connection,
+                     strings, keys, hashes, lists, sets, zsets, ...)
+test/                unit tests of pure logic, the same path as the source;
+                     support.agc: `exchange` (request bytes -> reader ->
+                     dispatch -> store -> writer -> reply bytes), `request`
 integration/         one smoke test of the real binary (Python, standard
                      library only)
 tools/               check_purity.py and its tests (Python, standard library)
@@ -48,10 +51,22 @@ tools/               check_purity.py and its tests (Python, standard library)
   `wrong_arity`), never with the constructor. A later feature adds a field to
   `Outcome` (or `Call`) with a default and a helper in the PR that needs it,
   and no handler changes.
-- Tests: unit and integration tests only, no BDD; few, on the important
-  behavior. TCP is tested in the Agentica repo: here one smoke test
-  (`integration/`) proves the binary starts, answers PING, QUIT closes, and
-  SIGTERM frees the port. It uses port 0 and stops its server.
+- Tests: as few as needed that still cover the software well; before adding
+  one ask what bug it catches that no other test catches. No BDD, no test per
+  function, no near-duplicates.
+  - Functional tests by domain, in Agentica, in process, no socket:
+    `test/functional/<domain>_test.agc` feeds request bytes to `exchange` and
+    compares the reply bytes and the keyspace. Plain paths, error texts and
+    arity are tested here.
+  - Unit tests only where a pure function has real logic (RESP reader and
+    writer, glob, ranges, score formatting).
+  - Property tests with `prop` (agentica-lang/packages), from the strings
+    issue on, inside the domain they belong to: laws over generated inputs and
+    model tests against a plain `Map` or `List`.
+  - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
+    proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
+    port. Tests of the server shell will move to the `dock` package (issue
+    #17).
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
@@ -92,8 +107,8 @@ used by `QUIT`) is what the server does after the replies.
    you pass in the `Call`, or build the new one first.
 3. A new data type: a variant in `store/value.agc` and its operations in
    `store/<type>.agc`. Handlers call those; they never reach into `Value`.
-4. A unit test in `test/commands/<family>_test.agc` (the same name).
-5. Nothing in `integration/`: it is only the smoke test.
+4. A case in the functional test of its domain, `test/functional/`.
+5. A unit test only if you wrote a pure function with real logic.
 6. Mark it in the table of its phase in `README.md`.
 
 ## Where later features go
