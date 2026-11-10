@@ -40,11 +40,10 @@ def test_protocol_error_closes() -> Result[Void]
   return Test.assert(result.closed, "a protocol error closes the connection")
 end
 
-# An inline line is split as Redis does; a bad quote closes after the replies before it.
+# The reply path of inline quoting: a quoted command is answered, and bad quotes
+# close the connection after the replies before them.
 def test_inline_quotes_and_their_errors() -> Result[Void]
-  ok_line = exchange(Keyspace(), "ECHO \"a b\\x41\" 'c d'\r\nPING\r\n".bytes)
-  try Test.eq(ok_line.reply, "-ERR wrong number of arguments for 'echo' command\r\n+PONG\r\n".bytes)
-  one = exchange(Keyspace(), "ECHO \"a b\\x41\"\r\nPING \"x\r\nPING\r\n".bytes)
-  try Test.eq(one.reply, "$4\r\na bA\r\n-ERR Protocol error: unbalanced quotes in request\r\n".bytes)
-  return Test.assert(one.closed, "unbalanced quotes close the connection")
+  result = exchange(Keyspace(), "ECHO \"a b\\x41\"\r\nPING \"x\r\nPING\r\n".bytes)
+  try Test.eq(result.reply, "$4\r\na bA\r\n-ERR Protocol error: unbalanced quotes in request\r\n".bytes)
+  return Test.assert(result.closed, "unbalanced quotes close the connection")
 end

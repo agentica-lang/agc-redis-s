@@ -5,6 +5,8 @@
 import {Partial, Read} from "reader"
 import Reader from "reader"
 
+LF = 10
+
 export struct Stream
   chunks: List[Bytes]
   have: Int
@@ -36,11 +38,31 @@ end
 export def feed(stream: Stream, chunk: Bytes) -> Fed
   chunks = stream.chunks.push(chunk)
   have = stream.have + chunk.size
-  if have < stream.partial.need
+  if waiting?(stream.partial, have, chunk)
     return Fed(stream: Stream(chunks: chunks, have: have, partial: stream.partial), requests: [], ending: Ending.Open)
   end
 
   return cut(Bytes.concat(chunks), stream.partial)
+end
+
+# Nothing can change yet: the request needs more bytes, or only a LF is missing
+# and this chunk has none (a line is refused at MAX_LINE, which needs a parse).
+def waiting?(partial: Partial, have: Int, chunk: Bytes) -> Bool
+  if have < partial.need
+    return true
+  end
+
+  return partial.line and have <= Reader.MAX_LINE and not has_lf?(chunk)
+end
+
+def has_lf?(chunk: Bytes) -> Bool
+  for byte in chunk
+    if byte == LF
+      return true
+    end
+  end
+
+  return false
 end
 
 def cut(buf: Bytes, resume: Partial) -> Fed

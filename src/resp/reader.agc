@@ -1,7 +1,7 @@
 ## The RESP2 request reader: bytes to one request. It resumes from a `Partial`
-## and never copies the buffer, so a read that holds many pipelined requests
-## walks it once, and a request that arrives in pieces is never parsed twice. A
-## request is an array of bulk strings or an inline line (`redis-cli`,
+## and slices only the arguments, so a read that holds many pipelined requests
+## walks the buffer once, and a request that arrives in pieces is never parsed
+## twice. A request is an array of bulk strings or an inline line (`redis-cli`,
 ## telnet).
 
 MAX_BULK = 536_870_912
@@ -11,7 +11,7 @@ MAX_ARRAY = 1_048_576
 MAX_QUERY = 1_073_741_824
 # Redis's PROTO_INLINE_MAX_SIZE: a header or inline line longer than this
 # without a LF is an error, so a line that never ends cannot grow the buffer.
-MAX_LINE = 65_536
+export MAX_LINE = 65_536
 LF = 10
 CR = 13
 DOLLAR = 36
@@ -33,6 +33,9 @@ export struct Partial
   need: Int = 1
   ## Bytes after `at` already seen to hold no LF, so a line is scanned once.
   scanned: Int = 0
+  ## The step waits for the LF of a line: the caller needs no new parse until
+  ## a chunk holds a LF or the line passes MAX_LINE.
+  line: Bool = false
   items: List[Bytes] = []
   ## Items of the array still to come; 0 outside an array.
   remaining: Int = 0
@@ -60,7 +63,7 @@ end
 
 enum Bulk
   Item(Bytes, Int)
-  More(Int, Int)
+  More(Int, Int, Bool)
   Fail(Read)
 end
 
@@ -76,7 +79,7 @@ export def read_request(buf: Bytes, from: Partial) -> Read
   end
 
   if from.at >= buf.size
-    return Read.Incomplete(from.with(need: 1, scanned: 0))
+    return Read.Incomplete(from.with(need: 1, scanned: 0, line: false))
   end
 
   if buf[from.at] == STAR
@@ -103,7 +106,7 @@ def find_line(buf: Bytes, from: Partial, too_big: String) -> Line
     return Line.Stop(Read.Invalid(too_big))
   end
 
-  return Line.Stop(Read.Incomplete(from.with(need: seen + 1, scanned: seen)))
+  return Line.Stop(Read.Incomplete(from.with(need: seen + 1, scanned: seen, line: true)))
 end
 
 # The line without its CR LF; `lf` is the offset of the LF.
@@ -192,21 +195,33 @@ def cut_at_nul(line: Bytes) -> Bytes
   return line
 end
 
-# The separators are the C isspace set, as in Redis.
+# Redis skips leading blanks with C isspace, but an unquoted word ends only at
+# a space, LF, CR, TAB or NUL: `a\vb` is one word.
 def split_words(line: Bytes) -> List[Bytes]
   words: List[Bytes] = []
-  start = 0
-  for i in 0..line.size
-    if i == line.size or space?(line[i])
-      if i > start
-        words = words.push(line.slice(start, i - start))
-      end
-
-      start = i + 1
+  i = 0
+  while true
+    while i < line.size and space?(line[i])
+      i += 1
     end
+
+    if i >= line.size
+      return words
+    end
+
+    start = i
+    while i < line.size and not word_end?(line[i])
+      i += 1
+    end
+
+    words = words.push(line.slice(start, i - start))
   end
 
   return words
+end
+
+def word_end?(byte: Int) -> Bool
+  return byte == 32 or byte == LF or byte == CR or byte == 9 or byte == 0
 end
 
 def space?(byte: Int) -> Bool
@@ -253,7 +268,7 @@ def read_word(line: Bytes, start: Int) -> Arg
 
     byte = line[i]
     if quote == 0
-      if space?(byte)
+      if word_end?(byte)
         return Arg.Done(out, i)
       end
 
@@ -357,9 +372,9 @@ def array_items(buf: Bytes, from: Partial) -> Read
         remaining -= 1
         pos = next
         scanned = 0
-      Bulk.More(need, seen) ->
+      Bulk.More(need, seen, line) ->
         return Read.Incomplete(
-          Partial(at: pos, need: need, scanned: seen, items: items, remaining: remaining, held: held),
+          Partial(at: pos, need: need, scanned: seen, line: line, items: items, remaining: remaining, held: held),
         )
       Bulk.Fail(read) -> return read
     end
@@ -370,7 +385,7 @@ end
 
 def read_bulk(buf: Bytes, from: Int, scanned: Int, held: Int) -> Bulk
   if from >= buf.size
-    return Bulk.More(1, 0)
+    return Bulk.More(1, 0, false)
   end
 
   if buf[from] != DOLLAR
@@ -380,7 +395,7 @@ def read_bulk(buf: Bytes, from: Int, scanned: Int, held: Int) -> Bulk
   end
 
   case find_line(buf, Partial(at: from, scanned: scanned), "Protocol error: too big bulk count string")
-    Line.Stop(Read.Incomplete(p)) -> return Bulk.More(p.need, p.scanned)
+    Line.Stop(Read.Incomplete(p)) -> return Bulk.More(p.need, p.scanned, true)
     Line.Stop(read) -> return Bulk.Fail(read)
     Line.Found(lf) ->
       case parse_int(line_text(buf, from + 1, lf))
@@ -403,7 +418,7 @@ def bulk_slice(buf: Bytes, from: Int, n: Int, start: Int, held: Int) -> Bulk
   end
 
   if start + n + 2 > buf.size
-    return Bulk.More(start + n + 2 - from, 0)
+    return Bulk.More(start + n + 2 - from, 0, false)
   end
 
   return Bulk.Item(buf.slice(start, n), start + n + 2)

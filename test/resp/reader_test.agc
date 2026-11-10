@@ -74,6 +74,12 @@ def test_inline_quoting() -> Result[Void]
   return unbalanced("'abc\\'")
 end
 
+# An unquoted word ends only at space, TAB, CR, LF or NUL; VT and FF only skip blanks.
+def test_vt_and_ff_do_not_split_a_word() -> Result[Void]
+  line = Bytes.from_list([11, 32, 97, 11, 98, 32, 12]).unwrap!
+  return Test.eq(inline(line), Read.Request([Bytes.from_list([97, 11, 98]).unwrap!], 9))
+end
+
 # Redis reads the line as a C string, so a NUL ends it.
 def test_nul_ends_an_inline_line() -> Result[Void]
   line = Bytes.from_list([97, 32, 0, 98]).unwrap!
