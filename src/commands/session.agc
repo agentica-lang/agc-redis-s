@@ -39,6 +39,11 @@ export def join(store: Store, client_id: Int) -> Store
   return store.with(sessions: store.sessions.put(client_id, Session()))
 end
 
+## Whether the client still has a session (it did not quit or leave).
+export def joined?(store: Store, client_id: Int) -> Bool
+  return store.sessions.has_key?(client_id)
+end
+
 ## A client left: its session goes.
 export def leave(store: Store, client_id: Int) -> Store
   return store.with(sessions: store.sessions.delete(client_id))
