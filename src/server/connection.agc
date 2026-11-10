@@ -29,10 +29,14 @@ export def serve(conn: Dock.Conn, inbox: Channel[Message]) -> Void
     none -> return
     some(farewell) ->
       # The store task sends the farewell after the replies that are still in
-      # the inbox and closes the connection, which ends the receive below. Were
-      # this handler to return first, dock would close the socket before them.
-      case inbox.send(Message.Close(conn, farewell), INBOX_SEND_MS)
-        ok(_) -> wait_for_close(conn)
+      # the inbox and closes the connection. Were this handler to return first,
+      # dock would close the socket before them: a client that sent its
+      # requests and shut its side down would lose the replies. A receive
+      # cannot wait for it (after an EOF it returns at once), so the store task
+      # answers on `done`.
+      done: Channel[Bool] = Channel.new(1)
+      case inbox.send(Message.Close(conn, farewell, done), INBOX_SEND_MS)
+        ok(_) -> wait_for(done, inbox)
         error(_) -> nil
       end
   end
@@ -53,8 +57,8 @@ export def gone(inbox: Channel[Message], id: Int) -> Void
   end
 end
 
-# `none` when the client left or the connection failed; the bytes to send
-# before closing (empty for none) when the server ends it.
+# `none` when the connection failed; the bytes to send before closing (empty
+# when the client just sent EOF or the server drops it) otherwise.
 def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
   stream = Stream.start()
   while true
@@ -62,7 +66,7 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
       error(_) -> return none
       ok(chunk) ->
         if chunk.empty?
-          return none
+          return some("".bytes)
         end
 
         case drain(conn, inbox, Stream.feed(stream, chunk))
@@ -75,14 +79,11 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
   return none
 end
 
-def wait_for_close(conn: Dock.Conn) -> Void
-  while true
-    case Dock.recv(conn, READ_BYTES)
-      error(_) -> return
-      ok(chunk) ->
-        if chunk.empty?
-          return
-        end
+def wait_for(done: Channel[Bool], inbox: Channel[Message]) -> Void
+  while not inbox.closed?
+    case done.recv(INBOX_SEND_MS)
+      ok(_) -> return
+      error(_) -> nil
     end
   end
 end

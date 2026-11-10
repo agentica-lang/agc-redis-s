@@ -2,6 +2,7 @@
 The behavior of the commands is tested in process, in test/functional/."""
 
 import signal
+import socket
 import time
 import unittest
 
@@ -19,11 +20,23 @@ class SmokeTest(unittest.TestCase):
                 self.assertEqual(read_exactly(sock, 5), b"+OK\r\n")
                 self.assertEqual(sock.recv(10), b"")
             self.assert_nothing_runs_after_quit(server)
-            server.proc.send_signal(signal.SIGTERM)
-            server.proc.wait(timeout=10)
+            self.assert_replies_survive_eof(server)
+            # SIGTERM with a client connected and idle must still end the
+            # process and free the port.
+            with server.connect():
+                server.proc.send_signal(signal.SIGTERM)
+                server.proc.wait(timeout=10)
             self.assertTrue(port_is_free(server.port))
         finally:
             server.stop()
+
+    def assert_replies_survive_eof(self, server):
+        # `printf ... | nc` and redis-cli's pipe mode send, shut down their
+        # side and read to the end: every reply must still arrive.
+        with server.connect() as sock:
+            sock.sendall(b"PING\r\n" * 1000 + b"SET a b\r\nGET a\r\n")
+            sock.shutdown(socket.SHUT_WR)
+            self.assertEqual(sock.makefile("rb").read(), b"+PONG\r\n" * 1000 + b"+OK\r\n$1\r\nb\r\n")
 
     def assert_nothing_runs_after_quit(self, server):
         # The requests behind a QUIT in one write must not run, and a client

@@ -41,7 +41,7 @@ def handle(state: State, message: Message) -> State
   case message
     Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
     Message.Exec(conn, argv) -> return exec(state, conn, argv)
-    Message.Close(conn, farewell) -> return close(state, conn, farewell)
+    Message.Close(conn, farewell, done) -> return hang_up(state, conn, farewell, done)
     Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
   end
 end
@@ -65,6 +65,12 @@ def send(conn: Dock.Conn, bytes: Bytes) -> Void
   if not bytes.empty?
     _ = Dock.send(conn, bytes)
   end
+end
+
+def hang_up(state: State, conn: Dock.Conn, farewell: Bytes, done: Channel[Bool]) -> State
+  next_state = close(state, conn, farewell)
+  _ = done.send(true, 0)
+  return next_state
 end
 
 # `Dock.close` writes what is queued first, so the replies and the farewell go

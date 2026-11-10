@@ -10,9 +10,10 @@ export enum Message
   Open(Dock.Conn)
   ## A request: the client and the name and arguments as the client sent them.
   Exec(Dock.Conn, List[Bytes])
-  ## The client broke the protocol (or sent too much): send the last bytes, if
-  ## any, then close.
-  Close(Dock.Conn, Bytes)
+  ## The client sent EOF, broke the protocol or sent too much: send the last
+  ## bytes, if any, then close, then tell the handler (the channel), which
+  ## waits so that dock does not close the socket before the replies.
+  Close(Dock.Conn, Bytes, Channel[Bool])
   ## The connection ended, whichever way (dock's `on_close`): the session goes.
   Gone(Int)
 end
