@@ -29,8 +29,10 @@ export def hash(key: Bytes) -> Int
   return total
 end
 
-## About `count` keys (more when hashes are equal), from the cursor on. It reads
-## every key name each call, unlike Redis's table walk: O(n) per page.
+## About `count` keys (more when hashes are equal), from the cursor on. It hashes
+## and sorts every key name each call, unlike Redis's table walk: O(n log n) per
+## page. Names chosen to have the same hash make a big page (the hash is not
+## secret), which only costs the client that sent them.
 export def page(names: List[Bytes], cursor: Int, count: Int) -> Page
   ranked = names.map do |key| Ranked(rank: hash(key), key: key) end
   later = ranked.select do |item| item.rank >= cursor end

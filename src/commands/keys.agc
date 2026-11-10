@@ -39,6 +39,13 @@ export def commands() -> List[Command]
   ]
 end
 
+## The index of the pick among `size` keys (`size` > 0). It drops the 16 low bits
+## of the generator, which are weak, and keeps about 46 bits, so a database of
+## any size has every index reachable.
+export def pick_index(random: Int, size: Int) -> Int
+  return (random / 65536) % size
+end
+
 # Memory is freed at once here, so UNLINK is DEL. A key named twice counts
 # once: the second time it is gone. An expired key is dropped (Redis expires it
 # on access) but does not count.
@@ -131,11 +138,25 @@ def placed(space: Keyspace.Keyspace, key: Bytes, value: Value, deadline: Optiona
   end
 end
 
-# A database index: the texts of `selectDb` and `getIntFromObjectOrReply`.
-def database_index(word: Bytes, not_int: String) -> Result[Int]
+# `getIntFromObjectOrReply`: a C int. `message` is the text for every failure,
+# or none for Redis's two defaults (not an integer, and not in the range of an int).
+def int_of(word: Bytes, message: Optional[String]) -> Result[Int]
   case Args.parse_int(word)
-    none -> return error(not_int)
-    some(index) ->
+    none -> return error(message.unwrap_or("ERR value is not an integer or out of range"))
+    some(value) ->
+      if value < -2_147_483_648 or value > 2_147_483_647
+        return error(message.unwrap_or("ERR value is out of range, value must between -2147483648 and 2147483647"))
+      end
+
+      return ok(value)
+  end
+end
+
+# `selectDb`: the index of one of the 16 databases.
+def database_index(word: Bytes) -> Result[Int]
+  case int_of(word, none)
+    error(text) -> return error(text)
+    ok(index) ->
       if index < 0 or index >= Databases.COUNT
         return error("ERR DB index is out of range")
       end
@@ -145,7 +166,7 @@ def database_index(word: Bytes, not_int: String) -> Result[Int]
 end
 
 def move(call: Call) -> Outcome
-  case database_index(call.args[1], "ERR value is not an integer or out of range")
+  case database_index(call.args[1])
     error(text) -> return fail(call, text)
     ok(target) -> return move_to(call, target)
   end
@@ -182,7 +203,7 @@ def copy_options(call: Call) -> Copying
     if word == "replace"
       found = found.with(replace: true)
     elsif word == "db" and i + 1 < call.args.size
-      case database_index(call.args[i + 1], "ERR value is not an integer or out of range")
+      case database_index(call.args[i + 1])
         error(text) -> return found.with(refused: some(text))
         ok(index) -> found = found.with(db: index)
       end
@@ -233,17 +254,17 @@ def copy_value(call: Call, found: Copying, there: Keyspace.Keyspace, value: Valu
 end
 
 def swapdb(call: Call) -> Outcome
-  case Args.parse_int(call.args[0])
-    none -> return fail(call, "ERR invalid first DB index")
-    some(first) -> return swap_with(call, first)
+  case int_of(call.args[0], some("ERR invalid first DB index"))
+    error(text) -> return fail(call, text)
+    ok(first) -> return swap_with(call, first)
   end
 end
 
 # Both are read as integers before either is checked against the 16.
 def swap_with(call: Call, first: Int) -> Outcome
-  case Args.parse_int(call.args[1])
-    none -> return fail(call, "ERR invalid second DB index")
-    some(second) -> return swap_checked(call, first, second)
+  case int_of(call.args[1], some("ERR invalid second DB index"))
+    error(text) -> return fail(call, text)
+    ok(second) -> return swap_checked(call, first, second)
   end
 end
 
@@ -267,5 +288,5 @@ def randomkey(call: Call) -> Outcome
     return reply(call, Reply.NilBulk)
   end
 
-  return reply(call, Reply.Bulk(found[(call.random / 65536) % found.size]))
+  return reply(call, Reply.Bulk(found[pick_index(call.random, found.size)]))
 end

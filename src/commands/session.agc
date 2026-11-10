@@ -87,14 +87,14 @@ def run_for(
     session: session,
     args: argv.drop(1),
     now_ms: now_ms,
-    random: store.seed,
+    random: store.seed * 2_147_483_648 + advanced(store.seed, now_ms),
     client_id: client_id,
     clients: store.sessions.size,
     table: table,
   )
 
   outcome = Dispatch.execute(table, argv[0], call)
-  next_store = apply(store, session.db, outcome.change).with(seed: advanced(store.seed, now_ms))
+  next_store = apply(store, session.db, outcome.change).with(seed: advanced(advanced(store.seed, now_ms), now_ms))
   if outcome.session != session
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
@@ -103,7 +103,8 @@ def run_for(
   return Ran(store: next_store, reply: reply, close: outcome.effects.include?(Effect.Close))
 end
 
-# A linear congruential step; the product stays under 2^62, so no overflow. The
+# A linear congruential step; a request uses two of them, so `Call.random` has 62
+# bits; the product stays under 2^62, so no overflow. The
 # clock is mixed in so the sequence is not the same after every start.
 def advanced(seed: Int, now_ms: Int) -> Int
   return (seed * 1_103_515_245 + 12_345 + now_ms % 65_536) % 2_147_483_648

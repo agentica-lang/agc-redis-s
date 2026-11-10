@@ -44,11 +44,11 @@ end
 def test_scan_returns_every_key_that_stays() -> Result[Void]
   ids = Prop.list(Prop.int(0, 20), 12)
   return Prop.check(Prop.pair(ids, Prop.int(1, 5)), Prop.Config(runs: 60)) do |input|
-    stable = named("stay", input.first)
+    stable = named("stay", input.first.uniq)
     start = stable.concat(named("drop", (1...12).to_a))
     seen = walk(start, input.second)
-    missed = stable.select do |key| not seen.include?(key) end
-    Prop.eq(missed.size, 0)
+    counts = stable.map do |key| seen.select do |other| other == key end.size end
+    Prop.eq(counts.select do |n| n != 1 end, [])
   end
 end
 

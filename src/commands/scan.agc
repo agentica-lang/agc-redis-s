@@ -61,38 +61,54 @@ def wanted?(call: Call, options: Options, key: Bytes) -> Bool
   end
 end
 
-# `strtoul`: an optional `+`, then digits; no space. An empty text is 0. A `-`
-# makes a huge number, which is a cursor past the end.
+# `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
+# text is 0. A number above 2^64 - 1 is an error (ERANGE), also after a `-`.
+# `-N` is a huge number, which is a cursor past the end.
 def cursor_of(text: Bytes) -> Optional[Int]
   if text.empty?
     return some(0)
   end
 
-  digits = text
-  if text[0] == 43 or text[0] == 45
-    digits = text.drop(1)
+  negative = text[0] == 45
+  digits = text.to_a
+  if negative or text[0] == 43
+    digits = text.drop(1).to_a
   end
 
-  if digits.empty?
+  if digits.empty? or digits.any? do |byte| byte < 48 or byte > 57 end
     return none
   end
 
-  total = 0
-  for byte in digits
-    if byte < 48 or byte > 57
-      return none
-    end
-
-    if total < BEYOND
-      total = total * 10 + byte - 48
-    end
+  significant = digits.drop_while do |byte| byte == 48 end
+  if too_big?(significant)
+    return none
   end
 
-  if text[0] == 45 and total > 0
+  if significant.empty?
+    return some(0)
+  end
+
+  if negative or significant.size > 10
     return some(BEYOND)
   end
 
-  return some(total)
+  return some(significant.reduce(0) do |total, byte| total * 10 + byte - 48 end)
+end
+
+# Above 18446744073709551615, written in digits with no leading zero.
+def too_big?(digits: List[Int]) -> Bool
+  limit = "18446744073709551615".bytes.to_a
+  if digits.size != limit.size
+    return digits.size > limit.size
+  end
+
+  for i in 0...digits.size
+    if digits[i] != limit[i]
+      return digits[i] > limit[i]
+    end
+  end
+
+  return false
 end
 
 def read_options(words: List[Bytes]) -> Options

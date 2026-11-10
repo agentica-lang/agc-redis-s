@@ -1,5 +1,6 @@
 ## DEL, UNLINK, EXISTS, TOUCH, TYPE and KEYS, with the keys that expired.
 
+import Keys from "../../src/commands/keys"
 import {fresh} from "../../src/store/databases"
 import {Exchange, exchange, talk, words} from "../support"
 
@@ -140,6 +141,7 @@ def test_copy() -> Result[Void]
     ["COPY", "none", "x"],
     ["COPY", "a", "x", "DB", "16"],
     ["COPY", "a", "x", "DB", "z"],
+    ["COPY", "a", "x", "DB", "4294967296"],
     ["COPY", "a", "x", "DB"],
     ["COPY", "a", "x", "FOO"],
     ["COPY", "a", "x", "db", "3", "replace"],
@@ -153,8 +155,10 @@ def test_copy() -> Result[Void]
   syntax = "-ERR syntax error\r\n"
   same = "-ERR source and destination objects are the same\r\n"
   want = ["+OK\r\n", "+OK\r\n", ":1\r\n", ":10\r\n", ":0\r\n", ":1\r\n", ":-1\r\n", same, ":1\r\n", ":0\r\n", range]
+  int_range = "-ERR value is out of range, value must between -2147483648 and 2147483647\r\n"
   want = want.concat([
     "-ERR value is not an integer or out of range\r\n",
+    int_range,
     syntax,
     syntax,
     ":1\r\n",
@@ -185,6 +189,8 @@ def test_move() -> Result[Void]
     ["MOVE", "b", "16"],
     ["MOVE", "b", "-1"],
     ["MOVE", "b", "z"],
+    ["MOVE", "b", "4294967296"],
+    ["MOVE", "b", "-2147483649"],
     ["MOVE", "c", "1"],
     ["DBSIZE"],
     ["SELECT", "1"],
@@ -198,7 +204,9 @@ def test_move() -> Result[Void]
   ]
 
   want = want.concat(["-ERR source and destination objects are the same\r\n", range, range])
-  want = want.concat(["-ERR value is not an integer or out of range\r\n", ":1\r\n", ":1\r\n", "+OK\r\n", bulk("3")])
+  int_range = "-ERR value is out of range, value must between -2147483648 and 2147483647\r\n"
+  want = want.concat(["-ERR value is not an integer or out of range\r\n", int_range, int_range])
+  want = want.concat([":1\r\n", ":1\r\n", "+OK\r\n", bulk("3")])
   return Test.eq(got.reply.to_a, want.join("").bytes.to_a)
 end
 
@@ -220,6 +228,8 @@ def test_swapdb() -> Result[Void]
     ["SWAPDB", "0", "16"],
     ["SWAPDB", "-1", "x"],
     ["SWAPDB", "-1", "0"],
+    ["SWAPDB", "0", "4294967296"],
+    ["SWAPDB", "-2147483649", "0"],
   ])
 
   info = "# Keyspace\r\ndb0:keys=1,expires=0,avg_ttl=0\r\ndb1:keys=1,expires=1,avg_ttl=0\r\n"
@@ -227,5 +237,14 @@ def test_swapdb() -> Result[Void]
   want = ["+OK\r\n", "+OK\r\n", "+OK\r\n", "+OK\r\n", "+OK\r\n", "$-1\r\n", bulk("2"), bulk(info), "+OK\r\n"]
   want = want.concat(["-ERR invalid first DB index\r\n", "-ERR invalid second DB index\r\n", range])
   want = want.concat(["-ERR invalid second DB index\r\n", range])
+  want = want.concat(["-ERR invalid second DB index\r\n", "-ERR invalid first DB index\r\n"])
   return Test.eq(got.reply.to_a, want.join("").bytes.to_a)
+end
+
+# The pick of RANDOMKEY uses the high bits of the 62-bit number, so an index past
+# 32768 is reachable, and the indexes stay inside the size.
+def test_random_pick_reaches_large_databases() -> Result[Void]
+  try Test.eq(Keys.pick_index(40_000 * 65_536, 100_000), 40_000)
+  try Test.eq(Keys.pick_index(2_305_843_009_213_693_951, 7), (2_305_843_009_213_693_951 / 65_536) % 7)
+  return Test.assert(Keys.pick_index(2_305_843_009_213_693_951, 1_000_000) > 32_768, "a wide pick")
 end
