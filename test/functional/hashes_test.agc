@@ -354,8 +354,11 @@ def test_hrandfield_errors() -> Result[Void]
     ["HRANDFIELD", "none", "4611686018427387904", "WITHVALUES"],
     ["HRANDFIELD", "none", "-4611686018427387904", "WITHVALUES"],
     ["HRANDFIELD", "none", "4611686018427387904"],
+    ["HRANDFIELD", "none", "4611686018427387903", "WITHVALUES"],
+    ["HRANDFIELD", "none", "-4611686018427387903", "WITHVALUES"],
     ["HSET", "h", "a", "1"],
     ["HRANDFIELD", "h", "-1000000000"],
+    ["HRANDFIELD", "h", "-650001", "WITHVALUES"],
   ])
 
   want = [
@@ -369,7 +372,10 @@ def test_hrandfield_errors() -> Result[Void]
     "-ERR value is out of range",
     "-ERR value is out of range",
     "*0",
+    "*0",
+    "*0",
     ":1",
+    "-ERR count is too large for the output limit",
     "-ERR count is too large for the output limit",
   ]
 

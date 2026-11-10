@@ -39,8 +39,9 @@ export def sample_repeating(size: Int, count: Int, random: Int) -> List[Int]
   seed = random % 2_147_483_648
   picked: List[Int] = []
   for _ in 1..count
-    seed = advance(seed)
-    picked = picked.push(below(seed, size))
+    first = advance(seed)
+    seed = advance(first)
+    picked = picked.push(below(first, seed, size))
   end
 
   return picked
@@ -53,8 +54,9 @@ export def sample_distinct(size: Int, count: Int, random: Int) -> List[Int]
   seed = random % 2_147_483_648
   picked: List[Int] = []
   for i in 0...size
-    seed = advance(seed)
-    if below(seed, size - i) < count - picked.size
+    first = advance(seed)
+    seed = advance(first)
+    if below(first, seed, size - i) < count - picked.size
       picked = picked.push(i)
     end
   end
@@ -67,7 +69,9 @@ def advance(seed: Int) -> Int
   return (seed * 1_103_515_245 + 12_345) % 2_147_483_648
 end
 
-# A number in 0...size from a seed (the low bits of the generator are weak).
-def below(seed: Int, size: Int) -> Int
-  return (seed / 16) % size
+# A number in 0...size from two steps of the generator. The low bits of a
+# linear congruential generator have a short period (the lowest alternates), so
+# each step gives its high 15 bits and the two make 30.
+def below(high: Int, low: Int, size: Int) -> Int
+  return ((high / 65536) * 32768 + low / 65536) % size
 end

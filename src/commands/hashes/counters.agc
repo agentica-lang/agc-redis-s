@@ -1,0 +1,89 @@
+## HINCRBY and HINCRBYFLOAT (t_hash.c hincrbyCommand and hincrbyfloatCommand,
+## object.c getLongLongFromObjectOrReply and getLongDoubleFromObjectOrReply,
+## util.c string2ll, string2ld and ld2string). The float sums and their text are
+## those of INCRBYFLOAT (store/long_double.agc).
+
+import Args from "../args"
+import {Call, Command, Outcome, fail, wrong_type, write} from "../command"
+import {Reply} from "../../resp/reply"
+import LongDouble from "../../store/long_double"
+import Hashes from "../../store/hashes"
+import {Held} from "../../store/hashes"
+
+NOT_INT = "ERR value is not an integer or out of range"
+NOT_FLOAT = "ERR value is not a valid float"
+INT_MAX = 9_223_372_036_854_775_807
+INT_MIN = -9_223_372_036_854_775_807 - 1
+
+export def commands() -> List[Command]
+  return [
+    Command(name: "hincrby", arity: 4, handler: &hincrby),
+    Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat),
+  ]
+end
+
+# The increment is read first, so a bad one wins over WRONGTYPE; then the
+# field, which must be an integer, and the overflow test of incrDecrCommand.
+def hincrby(call: Call) -> Outcome
+  case Args.parse_int(call.args[2])
+    none -> return fail(call, NOT_INT)
+    some(delta) ->
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return add_int(call, {}, delta)
+        Held.Fields(fields) -> return add_int(call, fields, delta)
+      end
+  end
+end
+
+def add_int(call: Call, fields: Map[Bytes, Bytes], delta: Int) -> Outcome
+  field = call.args[1]
+  old = 0
+  if fields.has_key?(field)
+    case Args.parse_int(fields.get(field, "".bytes))
+      none -> return fail(call, "ERR hash value is not an integer")
+      some(number) -> old = number
+    end
+  end
+
+  if (delta < 0 and old < 0 and delta < INT_MIN - old) or (delta > 0 and old > 0 and delta > INT_MAX - old)
+    return fail(call, "ERR increment or decrement would overflow")
+  end
+
+  total = old + delta
+  stored = Hashes.store(call.keyspace, call.args[0], fields.put(field, "#{total}".bytes), call.now_ms)
+  return write(call, stored, Reply.Integer(total))
+end
+
+# The increment is read first (a NaN or an infinity is refused here), then the
+# key and the field.
+def hincrbyfloat(call: Call) -> Outcome
+  case LongDouble.parse(call.args[2])
+    none -> return fail(call, NOT_FLOAT)
+    some(delta) ->
+      if delta.infinite
+        return fail(call, "ERR value is NaN or Infinity")
+      end
+
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return add_float(call, {}, delta)
+        Held.Fields(fields) -> return add_float(call, fields, delta)
+      end
+  end
+end
+
+def add_float(call: Call, fields: Map[Bytes, Bytes], delta: LongDouble.Ext) -> Outcome
+  field = call.args[1]
+  case LongDouble.parse(fields.get(field, "0".bytes))
+    none -> return fail(call, "ERR hash value is not a float")
+    some(old) ->
+      case LongDouble.add(old, delta)
+        none -> return fail(call, "ERR increment would produce NaN or Infinity")
+        some(sum) ->
+          shown = LongDouble.format(sum)
+          stored = Hashes.store(call.keyspace, call.args[0], fields.put(field, shown), call.now_ms)
+          return write(call, stored, Reply.Bulk(shown))
+      end
+  end
+end
