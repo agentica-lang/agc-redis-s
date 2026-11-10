@@ -6,7 +6,8 @@ Every folder under src/ except src/server is pure. A file there may not
   (b) use an impure builtin name in code (comments and the text of string
       literals are ignored; the code inside "#{...}" is checked).
 
-Standard library only. Heredoc text is read as code.
+A heredoc (`<<~`) is refused: its text would hide code from (b).
+Standard library only.
 """
 
 import os
@@ -23,6 +24,7 @@ PURE_STD = ["binary", "cookie", "eag", "html", "mime", "option_parser", "regex",
 IMPURE_SUBTREE = "src/server"
 
 NAME_RE = re.compile(r"\b(%s)\b" % "|".join(IMPURE_NAMES))
+HEREDOC_RE = re.compile(r"<<~")
 FROM_RE = re.compile(r'\bfrom\s+"([^"]*)"')
 
 
@@ -87,6 +89,8 @@ def check(root):
         with open(file, encoding="utf-8") as handle:
             text = handle.read()
         shown = os.path.relpath(file, root)
+        if HEREDOC_RE.search(TOKEN_RE.sub(blank, text)):
+            problems.append("%s: a heredoc is not allowed in the pure core" % shown)
         for path in import_paths(text):
             problem = import_problem(root, file, path)
             if problem:

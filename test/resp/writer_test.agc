@@ -4,18 +4,15 @@ import Writer from "../../src/resp/writer"
 def test_scalars() -> Result[Void]
   try Test.eq(Writer.encode(Reply.Simple("OK")), "+OK\r\n".bytes)
   try Test.eq(Writer.encode(Reply.Error("ERR boom".bytes)), "-ERR boom\r\n".bytes)
-  return Test.eq(Writer.encode(Reply.Integer(-7)), ":-7\r\n".bytes)
+  try Test.eq(Writer.encode(Reply.Integer(-7)), ":-7\r\n".bytes)
+  try Test.eq(Writer.encode(Reply.NilBulk), "$-1\r\n".bytes)
+  return Test.eq(Writer.encode(Reply.NilArray), "*-1\r\n".bytes)
 end
 
 def test_bulk_is_binary_safe() -> Result[Void]
   data = Bytes.from_list([0, 13, 10, 255]).unwrap!
   try Test.eq(Writer.encode(Reply.Bulk(data)), "$4\r\n".bytes + data + "\r\n".bytes)
   return Test.eq(Writer.encode(Reply.Bulk("".bytes)), "$0\r\n\r\n".bytes)
-end
-
-def test_nils() -> Result[Void]
-  try Test.eq(Writer.encode(Reply.NilBulk), "$-1\r\n".bytes)
-  return Test.eq(Writer.encode(Reply.NilArray), "*-1\r\n".bytes)
 end
 
 def test_nested_array() -> Result[Void]
