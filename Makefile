@@ -6,9 +6,13 @@ JOBS ?= 4
 # Named so that nothing else under the root is read.
 SOURCES = agc_redis_s.agc src test
 
-.PHONY: check fmt-check lint purity test integration
+.PHONY: install check fmt-check lint purity test integration
 
-check: purity
+# Fetches the packages of agentica.lock into deps/.
+install:
+	@agentica install
+
+check: purity install
 	@agentica check $(SOURCES)
 	@$(MAKE) --no-print-directory lint
 
@@ -22,7 +26,7 @@ fmt-check:
 purity:
 	@python3 tools/check_purity.py
 
-test:
+test: install
 	@agentica test --jobs $(JOBS) test
 	@cd tools && python3 -m unittest -q
 

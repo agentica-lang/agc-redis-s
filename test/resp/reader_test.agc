@@ -1,5 +1,7 @@
 import {Partial, Read} from "../../src/resp/reader"
 import Reader from "../../src/resp/reader"
+import {argv_gen, quote, request, to_bytes} from "../support"
+import Prop from "pkg/prop/prop"
 
 def start(buf: Bytes) -> Read
   return Reader.read_request(buf, Partial())
@@ -60,8 +62,6 @@ end
 # Redis's sdssplitargs: quotes, escapes, and a closing quote that must be
 # followed by a space or the end of the line.
 def test_inline_quoting() -> Result[Void]
-  try split_is("SET \"a b\" 'c d'", ["SET".bytes, "a b".bytes, "c d".bytes])
-  try split_is("\"a\\x41\\n\"", [Bytes.from_list([97, 65, 10]).unwrap!])
   try split_is("'it\\'s' \"q\\\"\"", ["it's".bytes, "q\"".bytes])
   try split_is("\"\" ''", ["".bytes, "".bytes])
   try split_is(" a \t  b\t", ["a".bytes, "b".bytes])
@@ -97,4 +97,37 @@ def test_a_line_that_never_ends_is_cut() -> Result[Void]
   try Test.eq(start(digits(65_537)), Read.Invalid("Protocol error: too big inline request"))
   try Test.eq(start("*".bytes + digits(65_536)), Read.Invalid("Protocol error: too big mbulk count string"))
   return Test.eq(start("*1\r\n$".bytes + digits(65_536)), Read.Invalid("Protocol error: too big bulk count string"))
+end
+
+def text_of(argv: List[Bytes], next: Int) -> String
+  ints = argv.map do |a| a.to_a end
+  return "#{ints} #{next}"
+end
+
+def read_args(read: Read) -> String
+  return case read
+    Read.Request(argv, next) -> text_of(argv, next)
+    _ -> "#{read}"
+  end
+end
+
+# What `request` writes the reader reads back, for any bytes: empty, binary,
+# with CR LF. 200 runs (the step budget allows over 400).
+def test_a_request_reads_back() -> Result[Void]
+  return Prop.check(argv_gen(8, 4), Prop.Config(runs: 200)) do |items|
+    sent = request(items.map do |xs| to_bytes(xs) end)
+    got = read_args(start(sent))
+    Prop.eq(got, "#{items} #{sent.size}")
+  end
+end
+
+# Quoting any bytes as Redis's `sdscatrepr` does and splitting the line gives
+# them back. 200 runs (the step budget allows over 400).
+def test_quoted_arguments_split_back() -> Result[Void]
+  return Prop.check(argv_gen(8, 4), Prop.Config(runs: 200)) do |items|
+    quoted = items.map do |xs| quote(to_bytes(xs)) + " ".bytes end
+    line = Bytes.concat(quoted) + "\r\n".bytes
+    got = read_args(start(line))
+    Prop.eq(got, "#{items} #{line.size}")
+  end
 end

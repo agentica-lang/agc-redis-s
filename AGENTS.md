@@ -62,9 +62,17 @@ tools/               check_purity.py and its tests (Python, standard library)
     smoke test is the check of the real loop.
   - Unit tests only where a pure function has real logic (RESP reader and
     writer, glob, ranges, score formatting).
-  - Property tests with `prop` (agentica-lang/packages), from the strings
-    issue on, inside the domain they belong to: laws over generated inputs and
-    model tests against a plain `Map` or `List`.
+  - Property tests with `prop` (agentica-lang/packages, pinned in
+    `agentica.toml`; `make install` fetches it into `deps/`, and `make check`
+    and `make test` run it). A law is one `test_` function with one
+    `Prop.check(gen, Prop.Config(runs: N))`, in the file of its domain. The
+    generated value must be JSON (`prop` prints a counterexample as JSON), so
+    generate `List[Int]` for bytes (`byte_list`, `to_bytes` in
+    `test/support.agc`) and compare with `Prop.eq` on text. A test has a budget
+    of about 2.5 million steps: count the cost of one case, try `runs` at four
+    times the value, keep a third to a half of what fits, and write the number
+    in the comment above the test. Laws over models (a `Map` or a `List`) are
+    for the data types.
   - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
     proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
     port. Tests of the server shell will move to the `dock` package (issue
