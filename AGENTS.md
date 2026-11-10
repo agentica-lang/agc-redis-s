@@ -11,7 +11,8 @@ agc_redis_s.agc      main: options, start the store task, run the accept loop
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
                      types), writer.agc (reply to bytes), reader.agc (bytes
-                     to a request, resumable at an offset)
+                     to a request, resumable from a `Partial`), stream.agc
+                     (the chunks of one connection to requests)
   store/             PURE. The data: value.agc (one variant per data type),
                      keyspace.agc (key to value); one file per data type
                      (hash.agc, list.agc, set.agc, zset.agc) when it lands

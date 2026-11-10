@@ -2,8 +2,9 @@
 ## store task. The writer task sends the replies.
 
 import Session from "../commands/session"
-import {Read} from "../resp/reader"
-import Reader from "../resp/reader"
+import {Ending} from "../resp/stream"
+import {Fed} from "../resp/stream"
+import Stream from "../resp/stream"
 import {OUTBOX_SLOTS, Message} from "message"
 import Writer from "writer"
 
@@ -21,7 +22,7 @@ export struct Link
 end
 
 enum Drained
-  More(Bytes)
+  More(Stream.Stream)
   Broken(Bytes)
 end
 
@@ -63,7 +64,7 @@ end
 
 # Returns the bytes to send before closing: empty when the client just left.
 def read_loop(link: Link) -> Bytes
-  buffer = "".bytes
+  stream = Stream.start()
   while true
     case TCP.recv_bytes(link.socket, READ_BYTES, IDLE_MS)
       error(_) -> return "".bytes
@@ -72,8 +73,8 @@ def read_loop(link: Link) -> Bytes
           return "".bytes
         end
 
-        case drain(link, buffer + chunk)
-          Drained.More(rest) -> buffer = rest
+        case drain(link, Stream.feed(stream, chunk))
+          Drained.More(next) -> stream = next
           Drained.Broken(farewell) -> return farewell
         end
     end
@@ -82,22 +83,19 @@ def read_loop(link: Link) -> Bytes
   return "".bytes
 end
 
-# Sends every whole request in the buffer; keeps the unfinished tail.
-def drain(link: Link, buffer: Bytes) -> Drained
-  pos = 0
-  while true
-    case Reader.read_request(buffer, pos)
-      Read.Incomplete -> return Drained.More(buffer.drop(pos))
-      Read.Invalid(text) -> return Drained.Broken(Session.protocol_error_reply(text))
-      Read.Skip(next) -> pos = next
-      Read.Request(argv, next) ->
-        # A request that is lost would shift every later reply: end instead.
-        case link.inbox.send(Message.Exec(link.id, argv), INBOX_SEND_MS)
-          error(_) -> return Drained.Broken("".bytes)
-          ok(_) -> pos = next
-        end
+# Sends every whole request the chunk completed, in order.
+def drain(link: Link, fed: Fed) -> Drained
+  for argv in fed.requests
+    # A request that is lost would shift every later reply: end instead.
+    case link.inbox.send(Message.Exec(link.id, argv), INBOX_SEND_MS)
+      error(_) -> return Drained.Broken("".bytes)
+      ok(_) -> nil
     end
   end
 
-  return Drained.More(buffer)
+  case fed.ending
+    Ending.Open -> return Drained.More(fed.stream)
+    Ending.Invalid(text) -> return Drained.Broken(Session.protocol_error_reply(text))
+    Ending.Overflow -> return Drained.Broken("".bytes)
+  end
 end
