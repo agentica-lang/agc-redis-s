@@ -28,7 +28,7 @@ end
 def test_client_list_filters() -> Result[Void]
   result = talk([
     ["CLIENT", "LIST", "TYPE", "pubsub"],
-    ["CLIENT", "LIST", "ID", "7", "1"],
+    ["CLIENT", "LIST", "ID", "7", "1", "1"],
     ["CLIENT", "LIST", "ID", "7"],
     ["CLIENT", "LIST", "ID", "x"],
     ["CLIENT", "LIST", "TYPE", "bogus"],
@@ -40,7 +40,7 @@ def test_client_list_filters() -> Result[Void]
   )
 
   expected = [
-    "$0\r\n\r\n$#{line.bytesize}\r\n#{line}\r\n$0\r\n\r\n",
+    "$0\r\n\r\n$#{line.bytesize * 2}\r\n#{line}#{line}\r\n$0\r\n\r\n",
     "-ERR Invalid client ID\r\n-ERR Unknown client type 'bogus'\r\n-ERR syntax error\r\n",
   ].join("")
 

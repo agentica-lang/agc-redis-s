@@ -32,6 +32,9 @@ end
 export struct Outcome
   keyspace: Keyspace
   session: Session
+  ## True when `keyspace` is not the one of the `Call`; only `write` sets it, so
+  ## the store skips putting the keyspace back after a command that only reads.
+  changed: Bool = false
   replies: List[Reply] = []
   effects: List[Effect] = []
 end
@@ -49,6 +52,11 @@ end
 
 export def reply(call: Call, answer: Reply) -> Outcome
   return Outcome(keyspace: call.keyspace, session: call.session, replies: [answer])
+end
+
+## One reply and a new keyspace: the way a command that writes answers.
+export def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
+  return Outcome(keyspace: keyspace, session: call.session, changed: true, replies: [answer])
 end
 
 ## One reply and a new session state (`SELECT`, `CLIENT SETNAME`).

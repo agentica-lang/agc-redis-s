@@ -6,8 +6,9 @@ import Requests from "../src/commands/session"
 import {Ending} from "../src/resp/stream"
 import Stream from "../src/resp/stream"
 import Table from "../src/commands/table"
-import {Session} from "../src/session/session"
+import {Store} from "../src/commands/session"
 import {Databases, fresh} from "../src/store/databases"
+import {Session} from "../src/session/session"
 import {Keyspace} from "../src/store/keyspace"
 import Prop from "pkg/prop/prop"
 
@@ -26,29 +27,27 @@ export def request(words: List[Bytes]) -> Bytes
   return Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
 
-## The whole path without a socket: the stream reader, then the same `Session`
-## calls as the store task, for one client with the id 1. `closed` is set by a
+## The whole path without a socket: the stream reader, then `Requests.run`, the
+## call the store task makes, for one client with the id 1. `closed` is set by a
 ## `Close` effect or a protocol error; what follows it is ignored.
 export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
-  state = Exchange(databases: databases, session: Session(), reply: "".bytes, closed: false)
+  store = Requests.join(Requests.start(databases), 1)
   replies: List[Bytes] = []
   fed = Stream.feed(Stream.start(), bytes)
   for argv in fed.requests
-    done = Requests.execute_request(table, state.databases, state.session, argv, now_ms, 1)
-    state = state.with(databases: done.databases, session: done.session)
+    done = Requests.run(table, store, 1, argv, now_ms)
+    store = done.store
     replies = replies.push(done.reply)
     if done.close
-      return state.with(reply: Bytes.concat(replies), closed: true)
+      return finish(store, replies, true)
     end
   end
 
   case fed.ending
-    Ending.Open -> return state.with(reply: Bytes.concat(replies))
-    Ending.Invalid(text) ->
-      replies = replies.push(Requests.protocol_error_reply(text))
-      return state.with(reply: Bytes.concat(replies), closed: true)
-    Ending.Overflow -> return state.with(reply: Bytes.concat(replies), closed: true)
+    Ending.Open -> return finish(store, replies, false)
+    Ending.Invalid(text) -> return finish(store, replies.push(Requests.protocol_error_reply(text)), true)
+    Ending.Overflow -> return finish(store, replies, true)
   end
 end
 
@@ -95,6 +94,11 @@ end
 export def run_in(table: Map[String, Command], name: String, args: List[String]) -> Outcome
   call = Call(keyspace: Keyspace(), session: Session(), args: args.map do |a| a.bytes end)
   return Dispatch.execute(table, name.bytes, call)
+end
+
+def finish(store: Store, replies: List[Bytes], closed: Bool) -> Exchange
+  session = store.sessions.get(1).unwrap_or(Session())
+  return Exchange(databases: store.databases, session: session, reply: Bytes.concat(replies), closed: closed)
 end
 
 def prepend(p: Prop.Pair[List[Int], List[List[Int]]]) -> List[List[Int]]

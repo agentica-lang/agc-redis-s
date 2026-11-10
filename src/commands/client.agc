@@ -91,26 +91,27 @@ def list_type(call: Call, type: Bytes) -> Outcome
   end
 end
 
+# One line for each id that is this client, as Redis prints one per id found.
 def list_ids(call: Call, ids: List[Bytes]) -> Outcome
-  found = false
+  lines: List[Bytes] = []
   for text in ids
     case Args.parse_int(text)
       none -> return fail(call, "ERR Invalid client ID")
       some(n) ->
         if n == call.client_id
-          found = true
+          lines = lines.push(line_bytes(call))
         end
     end
   end
 
-  if found
-    return reply(call, own_line(call))
-  end
-
-  return reply(call, Reply.Bulk("".bytes))
+  return reply(call, Reply.Bulk(Bytes.concat(lines)))
 end
 
 def own_line(call: Call) -> Reply
+  return Reply.Bulk(line_bytes(call))
+end
+
+def line_bytes(call: Call) -> Bytes
   session = call.session
   parts = [
     "id=#{call.client_id} name=".bytes,
@@ -122,5 +123,5 @@ def own_line(call: Call) -> Reply
     "\n".bytes,
   ]
 
-  return Reply.Bulk(Bytes.concat(parts))
+  return Bytes.concat(parts)
 end
