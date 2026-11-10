@@ -2,28 +2,30 @@
 ## never sees a half-done one, as with the single thread of Redis.
 
 import {Command} from "../commands/command"
-import Session from "../commands/session"
+import Requests from "../commands/session"
 import Table from "../commands/table"
 import Clock from "clock"
 import {MAX_PENDING_BYTES, REPLY_OVERHEAD, Message} from "message"
-import {Keyspace} from "../store/keyspace"
+import {Session} from "../session/session"
+import {Databases, fresh} from "../store/databases"
 
 POLL_MS = 1000
 
 struct Client
   outbox: Channel[Bytes]
   pending: ATS[Int, Int]
+  session: Session
 end
 
 struct State
-  keyspace: Keyspace
+  databases: Databases
   table: Map[String, Command]
   clients: Map[Int, Client]
 end
 
 ## Runs until `inbox` is closed.
 export def run(inbox: Channel[Message]) -> Void
-  state = State(keyspace: Keyspace(), table: Table.build(), clients: {})
+  state = State(databases: fresh(), table: Table.build(), clients: {})
   while true
     case inbox.recv(POLL_MS)
       ok(message) -> state = handle(state, message)
@@ -43,7 +45,7 @@ end
 def handle(state: State, message: Message) -> State
   case message
     Message.Open(id, outbox, pending) ->
-      return state.with(clients: state.clients.put(id, Client(outbox: outbox, pending: pending)))
+      return state.with(clients: state.clients.put(id, Client(outbox: outbox, pending: pending, session: Session())))
     Message.Exec(id, argv) -> return exec(state, id, argv)
     Message.Close(id, farewell) -> return close(state, id, farewell)
   end
@@ -52,17 +54,19 @@ end
 # A client that was dropped (its outbox was full) may still have requests in
 # the inbox: they must not run.
 def exec(state: State, id: Int, argv: List[Bytes]) -> State
-  if not state.clients.key?(id)
-    return state
-  end
+  case state.clients.get(id)
+    none -> return state
+    some(client) ->
+      done = Requests.execute_request(state.table, state.databases, client.session, argv, Clock.now_ms(), id)
+      known = client.with(session: done.session)
+      moved = state.with(databases: done.databases, clients: state.clients.put(id, known))
+      sent = send(moved, id, done.reply)
+      if done.close
+        return drop(sent, id)
+      end
 
-  done = Session.execute_request(state.table, state.keyspace, argv, Clock.now_ms(), id)
-  sent = send(state.with(keyspace: done.keyspace), id, done.reply)
-  if done.close
-    return drop(sent, id)
+      return sent
   end
-
-  return sent
 end
 
 # The store task never waits for a client: a full outbox or too many unread

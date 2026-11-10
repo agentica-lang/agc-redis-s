@@ -138,9 +138,10 @@ the field or the folder when it needs it.
   output (a field of `Outcome`): `MULTI` queues in it, and `EXEC` reads it.
 - Touched keys: `WATCH` and the blocking commands need the keys a command
   changed. The keyspace tracks dirty keys, or `Outcome.touched` lists them.
-- Databases: `MOVE`, `SWAPDB`, `FLUSHALL` and `COPY ... DB` need all 16.
-  Issue #3 decides between a `Databases` value with `.current` in `Call`, and
-  an effect.
+- Databases: `store/databases.agc` holds the 16 keyspaces. A handler sees the
+  selected one as `Call.keyspace` and returns its new one; `commands/session.agc`
+  puts it back. `MOVE`, `SWAPDB`, `FLUSHALL` and `COPY ... DB` need all 16: a
+  later PR adds the `Databases` to `Call` and `Outcome`.
 - Blocking commands (`BLPOP`, ...): a "blocking allowed" input in `Call`,
   because `MULTI` runs them without blocking. A handler that cannot answer
   returns a park effect (keys, deadline); the store task keeps the parked

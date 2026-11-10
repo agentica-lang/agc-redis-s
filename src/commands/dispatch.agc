@@ -1,6 +1,7 @@
 ## Runs one request against the table. Pure: the keyspace, the time and the
 ## client come in as data, the new keyspace and the replies go out.
 
+import Args from "args"
 import {Call, Command, Outcome, fail_bytes, wrong_arity} from "command"
 
 # Redis cuts the command name and the echoed arguments at 128 bytes
@@ -11,19 +12,52 @@ SHOWN_BYTES = 128
 ## the arguments after the name; `execute` sets `call.name`.
 export def execute(table: Map[String, Command], name: Bytes, call: Call) -> Outcome
   # Latin-1 maps every byte to a character, so this never fails.
-  lower = name.decode("latin-1").unwrap!.downcase
+  lower = Args.lower(name)
+  # `client|id` is the key of a subcommand, never a command of its own.
+  if lower.include?("|")
+    return unknown(name, call)
+  end
+
   case table.get(lower)
     none -> return unknown(name, call)
-    some(command) -> return run(command, call.with(name: lower))
+    some(command) -> return run(command, table, call.with(name: lower))
   end
 end
 
-def run(command: Command, call: Call) -> Outcome
+def run(command: Command, table: Map[String, Command], call: Call) -> Outcome
   if bad_arity?(command.arity, call.args.size + 1)
     return wrong_arity(call)
   end
 
+  if command.container
+    return subcommand(command, table, call)
+  end
+
   return command.handler(call)
+end
+
+# A container's arity (-2) guarantees an argument. The subcommand's arity counts
+# the container name, the subcommand and its arguments, and its error names it
+# as `client|id`, as Redis 7.2 does.
+def subcommand(container: Command, table: Map[String, Command], call: Call) -> Outcome
+  key = "#{call.name}|#{Args.lower(call.args[0])}"
+  case table.get(key)
+    none ->
+      text = Bytes.concat([
+        "ERR unknown subcommand '".bytes,
+        call.args[0].take(SHOWN_BYTES),
+        "'. Try #{container.name.upcase} HELP.".bytes,
+      ])
+
+      return fail_bytes(call, text)
+    some(sub) ->
+      inner = call.with(name: key, args: call.args.drop(1))
+      if bad_arity?(sub.arity, call.args.size + 1)
+        return wrong_arity(inner)
+      end
+
+      return sub.handler(inner)
+  end
 end
 
 def bad_arity?(arity: Int, count: Int) -> Bool
