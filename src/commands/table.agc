@@ -10,6 +10,8 @@ import Expire from "expire"
 import Counters from "hashes/counters"
 import Fields from "hashes/fields"
 import HashListings from "hashes/listings"
+import HashRandom from "hashes/random"
+import HashScan from "hashes/scan"
 import Keys from "keys"
 import Numbers from "numbers"
 import Scan from "scan"
@@ -29,6 +31,8 @@ export def build() -> Map[String, Command]
       .concat(Fields.commands())
       .concat(HashListings.commands())
       .concat(Counters.commands())
+      .concat(HashRandom.commands())
+      .concat(HashScan.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end

@@ -1,0 +1,51 @@
+## HSCAN (t_hash.c hscanCommand, db.c scanGenericCommand). Each page sorts the
+## field names by their hash, as SCAN does with the keys: O(n log n) per call.
+
+import Scan from "../scan"
+import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
+import {Reply} from "../../resp/reply"
+import Hashes from "../../store/hashes"
+import ScanPages from "../../store/scan"
+import {Held} from "../../store/hashes"
+
+export def commands() -> List[Command]
+  return [Command(name: "hscan", arity: -3, handler: &hscan)]
+end
+
+# HSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
+# the key, then the options. The pages are ordered by the hash of the field
+# name, as SCAN's are, so a field that stays for the whole scan is in exactly
+# one page. Redis answers a small hash in one page whatever COUNT says; this
+# follows COUNT, which the protocol allows.
+def hscan(call: Call) -> Outcome
+  case Scan.cursor_of(call.args[1])
+    none -> return fail(call, "ERR invalid cursor")
+    some(cursor) ->
+      case Hashes.held(call.keyspace, call.args[0], call.now_ms)
+        Held.Foreign -> return wrong_type(call)
+        Held.Missing -> return reply(call, scan_reply(0, []))
+        Held.Fields(fields) -> return scan_fields(call, fields, cursor)
+      end
+  end
+end
+
+def scan_fields(call: Call, fields: Map[Bytes, Bytes], cursor: Int) -> Outcome
+  options = Scan.read_options(call.args.drop(2), false)
+  case options.refused
+    some(text) -> return fail(call, text)
+    none -> nil
+  end
+
+  page = ScanPages.page(fields.keys, cursor, options.count)
+  listed = page.keys.select do |name| Scan.matches?(options, name) end
+  items: List[Reply] = []
+  for name in listed
+    items = items.push(Reply.Bulk(name)).push(Reply.Bulk(fields.get(name, "".bytes)))
+  end
+
+  return reply(call, scan_reply(page.next, items))
+end
+
+def scan_reply(next: Int, items: List[Reply]) -> Reply
+  return Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])
+end

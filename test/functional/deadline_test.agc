@@ -9,13 +9,17 @@ import {Command} from "../../src/commands/command"
 import {Exchange, exchange, to_bytes, words} from "../support"
 import Prop from "pkg/prop/prop"
 
+WRONGTYPE = "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n".bytes
 HIGH = "9223372036854775807"
 NOT_INT = "-ERR value is not an integer or out of range\r\n"
 
 # One key of the model: its value and its deadline, if it has one.
+# A key holds a string (`value`) or, when `fields` is some, a hash from the
+# field number to its bytes.
 struct Entry
   value: List[Int]
   due: Optional[Int]
+  fields: Optional[Map[Int, List[Int]]] = none
 end
 
 struct Model
@@ -298,6 +302,14 @@ def present(entry: Optional[Entry]) -> Int
   return 0
 end
 
+def present_field(fields: Map[Int, List[Int]], field: Int) -> Int
+  if fields.has_key?(field)
+    return 1
+  end
+
+  return 0
+end
+
 def whole(n: Int) -> Bytes
   return ":#{n}\r\n".bytes
 end
@@ -319,7 +331,7 @@ def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   end
 end
 
-# The fifteen operations as the requests they make (the tenth, a sweep, makes
+# The nineteen operations as the requests they make (the tenth, a sweep, makes
 # none): the clock moves by the second number first, and the key is one of three.
 # PEXPIRE takes -2 to 8 ms, so a time that is now or past deletes the key.
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -328,7 +340,7 @@ def argv_of(op: List[Int]) -> List[Bytes]
   ms = "#{xs[2] % 9 + 1}".bytes
   moved = "#{xs[2] % 11 - 2}".bytes
   value = to_bytes(op.drop(4))
-  return case xs[0] % 15
+  return case xs[0] % 19
     0 -> ["SET".bytes, key, value]
     1 -> ["SET".bytes, key, value, "PX".bytes, ms]
     2 -> ["PEXPIRE".bytes, key, moved]
@@ -342,6 +354,10 @@ def argv_of(op: List[Int]) -> List[Bytes]
     12 -> ["INFO".bytes, "keyspace".bytes]
     13 -> ["RENAME".bytes, key, "k#{xs[3] % 3}".bytes]
     14 -> ["FLUSHDB".bytes]
+    15 -> ["HSET".bytes, key, "f#{xs[3] % 3}".bytes, value]
+    16 -> ["HDEL".bytes, key, "f#{xs[3] % 3}".bytes]
+    17 -> ["HLEN".bytes, key]
+    18 -> ["TYPE".bytes, key]
     _ -> ["DEL".bytes, key]
   end
 end
@@ -387,7 +403,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
   held = old.unwrap_or(Entry(value: [], due: none))
   state = model.state
   answer = "+OK\r\n".bytes
-  case xs[0] % 15
+  case xs[0] % 19
     0 -> state = state.put(key, Entry(value: value, due: none))
     1 -> state = state.put(key, Entry(value: value, due: some(now + ms)))
     2 ->
@@ -414,6 +430,10 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
         answer = bulk(held.value)
       end
 
+      if held.fields.some?
+        answer = WRONGTYPE
+      end
+
     5 ->
       answer = whole(-2)
       if old.some?
@@ -426,8 +446,13 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
 
     6 -> answer = whole(present(old))
     7 ->
-      state = state.put(key, held.with(value: held.value.concat(value)))
-      answer = whole(held.value.size + value.size)
+      if held.fields.some?
+        answer = WRONGTYPE
+      else
+        state = state.put(key, held.with(value: held.value.concat(value)))
+        answer = whole(held.value.size + value.size)
+      end
+
     9 ->
       state = swept(state, now)
       return Model(state: state, replies: model.replies)
@@ -455,6 +480,45 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
       end
 
     14 -> state = {}
+    15 ->
+      if old.some? and held.fields.none?
+        answer = WRONGTYPE
+      else
+        fields = held.fields.unwrap_or({})
+        answer = whole(1 - present_field(fields, xs[3] % 3))
+        state = state.put(key, held.with(fields: some(fields.put(xs[3] % 3, value))))
+      end
+
+    16 ->
+      fields = held.fields.unwrap_or({})
+      if old.some? and held.fields.none?
+        answer = WRONGTYPE
+      else
+        answer = whole(present_field(fields, xs[3] % 3))
+        kept = fields.delete(xs[3] % 3)
+        if old.some? and kept.empty?
+          state = state.delete(key)
+        elsif old.some?
+          state = state.put(key, held.with(fields: some(kept)))
+        end
+      end
+
+    17 ->
+      answer = whole(held.fields.unwrap_or({}).size)
+      if old.some? and held.fields.none?
+        answer = WRONGTYPE
+      end
+
+    18 ->
+      answer = "+none\r\n".bytes
+      if old.some?
+        answer = "+string\r\n".bytes
+      end
+
+      if held.fields.some?
+        answer = "+hash\r\n".bytes
+      end
+
     _ ->
       state = state.delete(key)
       answer = whole(present(old))
@@ -496,7 +560,7 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   store = Requests.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
-    if ops[i].concat([0])[0] % 15 == 9
+    if ops[i].concat([0])[0] % 19 == 9
       store = Requests.expire_keys(store, times[i])
     else
       done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
@@ -508,6 +572,8 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
   return Bytes.concat(replies)
 end
 
+# HSET, HDEL, HLEN and TYPE join them: a hash keeps its deadline, goes with its
+# last field, and answers WRONGTYPE to GET and APPEND.
 # SET, SET PX, PEXPIRE (also with NX, XX, GT, LT and a time that is now or
 # past), PERSIST, GET, PTTL, EXISTS, APPEND, DEL, RENAME among the keys, FLUSHDB,
 # DBSIZE and INFO keyspace against

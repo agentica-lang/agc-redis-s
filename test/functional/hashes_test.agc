@@ -1,9 +1,20 @@
 ## The hash commands and the type checks between hashes and strings.
 
+import Scan from "../../src/store/scan"
+import Table from "../../src/commands/table"
+import {exchange, run_requests, talk, to_bytes, words} from "../support"
 import {fresh} from "../../src/store/databases"
-import {exchange, talk, words} from "../support"
+import Prop from "pkg/prop/prop"
 
 WRONGTYPE = "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+
+# The model of one hash: the fields in the order they were first set, and the
+# values.
+struct Model
+  order: List[Int]
+  values: Map[Int, List[Int]]
+  replies: List[Bytes]
+end
 
 def ask(requests: List[List[String]]) -> String
   return talk(requests).reply.decode("latin-1").unwrap!
@@ -270,4 +281,219 @@ def test_last_field_drops_the_deadline() -> Result[Void]
   ])
 
   return Test.eq(got, ":1\r\n:1\r\n:1\r\n:1\r\n:-1\r\n")
+end
+
+# The fields of a reply that lists them: the lines that are no length marker.
+def names_in(reply: String) -> List[String]
+  return reply.split("\r\n").select do |line| line != "" and not ["$", "*", ":"].include?(line.slice(0, 1).to_s) end
+end
+
+def count_in(requests: List[List[String]]) -> String
+  return ask([["HSET", "h", "f0", "v0", "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4"]].concat(requests))
+end
+
+# HRANDFIELD: one field; a count that covers the hash gives all of it in order;
+# a smaller one gives that many different fields in order; a negative one gives
+# that many, repeats allowed; WITHVALUES pairs each with its value.
+def test_hrandfield() -> Result[Void]
+  single = ask([
+    ["HSET", "h", "a", "1"],
+    ["HRANDFIELD", "h"],
+    ["HRANDFIELD", "h", "-3"],
+    ["HRANDFIELD", "h", "-2", "withvalues"],
+  ])
+
+  try Test.eq(
+    single,
+    ":1\r\n$1\r\na\r\n*3\r\n$1\r\na\r\n$1\r\na\r\n$1\r\na\r\n*4\r\n$1\r\na\r\n$1\r\n1\r\n$1\r\na\r\n$1\r\n1\r\n",
+  )
+
+  all = count_in([
+    ["HRANDFIELD", "h", "9"],
+    ["HRANDFIELD", "h", "5"],
+    ["HRANDFIELD", "h", "0"],
+    ["HRANDFIELD", "h", "7", "WITHVALUES"],
+  ])
+
+  try Test.assert(
+    all.include?("*5\r\n$2\r\nf0\r\n$2\r\nf1\r\n$2\r\nf2\r\n$2\r\nf3\r\n$2\r\nf4\r\n*5\r\n$2\r\nf0"),
+    "the whole hash, in order",
+  )
+
+  try Test.assert(all.include?("*0\r\n*10\r\n$2\r\nf0\r\n$2\r\nv0"), "zero is empty; WITHVALUES doubles the length")
+  # Ten draws of 3 different fields: ascending and distinct every time.
+  draws = count_in((1..10).to_a.map do |_| ["HRANDFIELD", "h", "3"] end)
+  found = names_in(draws)
+  try Test.eq(found.size, 30)
+  for i in 0...10
+    picked = found.drop(i * 3).take(3)
+    try Test.assert(
+      picked.sort == picked and picked[0] != picked[1] and picked[1] != picked[2],
+      "three different fields in order: #{picked}",
+    )
+  end
+
+  noise = count_in([["HRANDFIELD", "h", "-40"]])
+  try Test.assert(names_in(noise).size == 40, "forty fields from the hash")
+  return Test.eq(
+    ask([["HRANDFIELD", "none"], ["HRANDFIELD", "none", "3"], ["HRANDFIELD", "none", "-3", "WITHVALUES"]]),
+    "$-1\r\n*0\r\n*0\r\n",
+  )
+end
+
+# The count is read before the options and the key; the limits are Redis's.
+def test_hrandfield_errors() -> Result[Void]
+  got = ask([
+    ["SET", "s", "1"],
+    ["HRANDFIELD", "s"],
+    ["HRANDFIELD", "s", "2"],
+    ["HRANDFIELD", "s", "x", "BAD"],
+    ["HRANDFIELD", "s", "1", "BAD"],
+    ["HRANDFIELD", "s", "1", "WITHVALUES", "x"],
+    ["HRANDFIELD", "none", "-9223372036854775808"],
+    ["HRANDFIELD", "none", "4611686018427387904", "WITHVALUES"],
+    ["HRANDFIELD", "none", "-4611686018427387904", "WITHVALUES"],
+    ["HRANDFIELD", "none", "4611686018427387904"],
+    ["HRANDFIELD", "none", "4611686018427387903", "WITHVALUES"],
+    ["HRANDFIELD", "none", "-4611686018427387903", "WITHVALUES"],
+    ["HSET", "h", "a", "1"],
+    ["HRANDFIELD", "h", "-1000000000"],
+    ["HRANDFIELD", "h", "-650001", "WITHVALUES"],
+  ])
+
+  want = [
+    "+OK",
+    WRONGTYPE.trim,
+    WRONGTYPE.trim,
+    "-ERR value is not an integer or out of range",
+    "-ERR syntax error",
+    "-ERR syntax error",
+    "-ERR value is out of range, value must between -9223372036854775807 and 9223372036854775807",
+    "-ERR value is out of range",
+    "-ERR value is out of range",
+    "*0",
+    "*0",
+    "*0",
+    ":1",
+    "-ERR count is too large for the output limit",
+    "-ERR count is too large for the output limit",
+  ]
+
+  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+end
+
+def pair(name: String, value: String) -> String
+  return "$#{name.size}\r\n#{name}\r\n$#{value.size}\r\n#{value}\r\n"
+end
+
+# HSCAN pages by the hash of the field name, as SCAN does: COUNT 1 gives one
+# field and the hash of the next as the cursor; MATCH filters the names; TYPE is
+# a syntax error; a missing key is an empty scan.
+def test_hscan() -> Result[Void]
+  setup = [["HSET", "h", "a", "1", "b", "2", "c", "3"], ["SET", "s", "1"]]
+  names = ["a", "b", "c"].sort_by do |name| Scan.hash(name.bytes) end
+  values = {"a": "1", "b": "2", "c": "3"}
+  next = "#{Scan.hash(names[1].bytes)}"
+  first = "*2\r\n$#{next.size}\r\n#{next}\r\n*2\r\n#{pair(names[0], values[names[0]])}"
+  rest = "*2\r\n$1\r\n0\r\n*4\r\n#{pair(names[1], values[names[1]])}#{pair(names[2], values[names[2]])}"
+
+  got = ask(setup.concat([["HSCAN", "h", "0", "COUNT", "1"], ["HSCAN", "h", next, "COUNT", "5"]]))
+  try Test.eq(got, ":3\r\n+OK\r\n#{first}#{rest}")
+  more = ask(
+    setup.concat([
+      ["HSCAN", "h", "0", "MATCH", "b"],
+      ["HSCAN", "h", "0", "TYPE", "hash"],
+      ["HSCAN", "none", "0"],
+      ["HSCAN", "s", "0"],
+      ["HSCAN", "h", "x"],
+      ["HSCAN", "s", "x"],
+      ["HSCAN", "h", "0", "COUNT", "0"],
+    ]),
+  )
+
+  want = [
+    ":3",
+    "+OK",
+    "*2\r\n$1\r\n0\r\n*2\r\n#{pair("b", "2").trim}",
+    "-ERR syntax error",
+    "*2\r\n$1\r\n0\r\n*0",
+    WRONGTYPE.trim,
+    "-ERR invalid cursor",
+    "-ERR invalid cursor",
+    "-ERR syntax error",
+  ]
+
+  return Test.eq(more, "#{want.join("\r\n")}\r\n")
+end
+
+def bulk(data: List[Int]) -> Bytes
+  return Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
+end
+
+def argv_for(op: List[Int]) -> List[Bytes]
+  xs = op.concat([0, 0, 0])
+  field = "f#{xs[1] % 4}".bytes
+  return case xs[0] % 5
+    0 -> ["HSET".bytes, "h".bytes, field, to_bytes(op.drop(2))]
+    1 -> ["HDEL".bytes, "h".bytes, field]
+    2 -> ["HLEN".bytes, "h".bytes]
+    3 -> ["HGET".bytes, "h".bytes, field]
+    _ -> ["HGETALL".bytes, "h".bytes]
+  end
+end
+
+def model_step(model: Model, op: List[Int]) -> Model
+  xs = op.concat([0, 0, 0])
+  field = xs[1] % 4
+  data = op.drop(2)
+  order = model.order
+  values = model.values
+  answer = bulk([])
+  case xs[0] % 5
+    0 ->
+      answer = ":#{1 - count_of(values, field)}\r\n".bytes
+      if not values.has_key?(field)
+        order = order.push(field)
+      end
+
+      values = values.put(field, data)
+    1 ->
+      answer = ":#{count_of(values, field)}\r\n".bytes
+      order = order.select do |name| name != field end
+      values = values.delete(field)
+    2 -> answer = ":#{order.size}\r\n".bytes
+    3 ->
+      answer = "$-1\r\n".bytes
+      if values.has_key?(field)
+        answer = bulk(values.get(field, []))
+      end
+
+    _ ->
+      parts = order.map do |name| Bytes.concat([bulk("f#{name}".bytes.to_a), bulk(values.get(name, []))]) end
+      answer = Bytes.concat(["*#{order.size * 2}\r\n".bytes].concat(parts))
+  end
+
+  return Model(order: order, values: values, replies: model.replies.push(answer))
+end
+
+def count_of(values: Map[Int, List[Int]], field: Int) -> Int
+  if values.has_key?(field)
+    return 1
+  end
+
+  return 0
+end
+
+# HSET, HDEL, HLEN, HGET and HGETALL on one hash against the model, 300 runs.
+def test_a_hash_follows_a_model() -> Result[Void]
+  table = Table.build()
+  numbers = Prop.int(0, 255)
+  ops = Prop.list(Prop.list(numbers, 6), 24)
+  return Prop.check(ops, Prop.Config(runs: 300)) do |list|
+    start = Model(order: [], values: {}, replies: [])
+    model = list.reduce(start) do |acc, op| model_step(acc, op) end
+    argvs = list.map do |op| argv_for(op) end
+    got = run_requests(table, fresh(), argvs)
+    Prop.eq(got.reply.to_a, Bytes.concat(model.replies).to_a)
+  end
 end
