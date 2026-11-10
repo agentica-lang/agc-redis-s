@@ -33,21 +33,17 @@ end
 export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
   store = Requests.join(Requests.start(databases), 1)
-  replies: List[Bytes] = []
   fed = Stream.feed(Stream.start(), bytes)
-  for argv in fed.requests
-    done = Requests.run(table, store, 1, argv, now_ms)
-    store = done.store
-    replies = replies.push(done.reply)
-    if done.close
-      return finish(store, replies, true)
-    end
+  done = Requests.run_all(table, store, 1, fed.requests, now_ms)
+  replies = [done.reply]
+  if done.close
+    return finish(done.store, replies, true)
   end
 
   case fed.ending
-    Ending.Open -> return finish(store, replies, false)
-    Ending.Invalid(text) -> return finish(store, replies.push(Requests.protocol_error_reply(text)), true)
-    Ending.Overflow -> return finish(store, replies, true)
+    Ending.Open -> return finish(done.store, replies, false)
+    Ending.Invalid(text) -> return finish(done.store, replies.push(Requests.protocol_error_reply(text)), true)
+    Ending.Overflow -> return finish(done.store, replies, true)
   end
 end
 

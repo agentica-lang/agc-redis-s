@@ -84,7 +84,7 @@ end
 def handle(state: State, message: Message, now: Int) -> State
   case message
     Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
-    Message.Exec(conn, argv) -> return exec(state, conn, argv, now)
+    Message.Exec(conn, requests) -> return exec(state, conn, requests, now)
     Message.Close(conn, farewell) -> return hang_up(state, conn, farewell)
     Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
   end
@@ -92,8 +92,8 @@ end
 
 # A client that was dropped or already quit has no session, so the requests it
 # left in the inbox do nothing.
-def exec(state: State, conn: Dock.Conn, argv: List[Bytes], now: Int) -> State
-  done = Requests.run(state.table, state.store, conn.id, argv, now)
+def exec(state: State, conn: Dock.Conn, requests: List[List[Bytes]], now: Int) -> State
+  done = Requests.run_all(state.table, state.store, conn.id, requests, now)
   send(conn, done.reply)
   next_state = state.with(store: done.store)
   if done.close

@@ -83,11 +83,11 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
   return none
 end
 
-# Sends every whole request the chunk completed, in order.
+# Sends every whole request the chunk completed, in order, as one message.
 def drain(conn: Dock.Conn, inbox: Channel[Message], fed: Fed) -> Drained
-  for argv in fed.requests
-    # A request that is lost would shift every later reply: end instead.
-    case inbox.send(Message.Exec(conn, argv), INBOX_SEND_MS)
+  if not fed.requests.empty?
+    # Requests that are lost would shift every later reply: end instead.
+    case inbox.send(Message.Exec(conn, fed.requests), INBOX_SEND_MS)
       error(_) -> return Drained.Broken("".bytes)
       ok(_) -> nil
     end

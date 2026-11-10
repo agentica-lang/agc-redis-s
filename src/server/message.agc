@@ -8,8 +8,10 @@ import Dock from "pkg/dock/dock"
 export enum Message
   ## A new client: it gets a session.
   Open(Dock.Conn)
-  ## A request: the client and the name and arguments as the client sent them.
-  Exec(Dock.Conn, List[Bytes])
+  ## The requests one receive completed, in order: the client and, for each,
+  ## the name and arguments as the client sent them. One message per chunk, so
+  ## the store task answers them with one `Dock.send`.
+  Exec(Dock.Conn, List[List[Bytes]])
   ## The client sent EOF, broke the protocol or sent too much: send the last
   ## bytes, if any, then close. The handler handed the connection over, so it
   ## stays open until the store task closes it, after the queued replies.

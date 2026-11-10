@@ -79,6 +79,36 @@ export def run(table: Map[String, Command], store: Store, client_id: Int, argv: 
   end
 end
 
+## `run` for the requests of one receive, in order: one reply with all of
+## theirs, so the task sends once. A request that closes the connection ends the
+## run: the ones behind it do nothing.
+export def run_all(
+  table: Map[String, Command],
+  store: Store,
+  client_id: Int,
+  requests: List[List[Bytes]],
+  now_ms: Int,
+) -> Ran
+  current = store
+  replies: List[Bytes] = []
+  closing = false
+  for argv in requests
+    done = run(table, current, client_id, argv, now_ms)
+    current = done.store
+    replies = replies.push(done.reply)
+    if done.close
+      closing = true
+      break
+    end
+  end
+
+  if replies.size == 1
+    return Ran(store: current, reply: replies[0], close: closing)
+  end
+
+  return Ran(store: current, reply: Bytes.concat(replies), close: closing)
+end
+
 def run_for(
   table: Map[String, Command],
   store: Store,

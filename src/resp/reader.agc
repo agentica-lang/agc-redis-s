@@ -126,12 +126,12 @@ def parse_int(text: Bytes) -> Optional[Int]
     return some(0)
   end
 
-  digits = text
-  if not text.empty? and text[0] == MINUS
-    digits = text.drop(1)
+  first = 0
+  if text.size > 0 and text[0] == MINUS
+    first = 1
   end
 
-  if digits.empty? or digits[0] == ZERO or not digits.to_a.all? do |b| b >= ZERO and b <= NINE end
+  if first == text.size or text[first] == ZERO or not digits_from?(text, first)
     return none
   end
 
@@ -143,6 +143,20 @@ def parse_int(text: Bytes) -> Optional[Int]
         error(_) -> return none
       end
   end
+end
+
+# Whether every byte from `first` on is a digit; no list of the bytes is built.
+def digits_from?(text: Bytes, first: Int) -> Bool
+  i = first
+  while i < text.size
+    if text[i] < ZERO or text[i] > NINE
+      return false
+    end
+
+    i += 1
+  end
+
+  return true
 end
 
 def read_inline(buf: Bytes, from: Partial) -> Read
