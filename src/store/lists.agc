@@ -75,14 +75,51 @@ export def push_back(seq: Seq, element: Bytes) -> Seq
   return Seq(items: seq.items.put(seq.head + length(seq), element), head: seq.head)
 end
 
-## The elements of indexes `span.first` to `span.last`, in order.
-export def slice(seq: Seq, span: Span) -> List[Bytes]
+## The list without its first `count` elements (the count is at most the
+## length): one `Map` step each.
+export def drop_front(seq: Seq, count: Int) -> Seq
+  items = seq.items
+  for offset in 0...count
+    items = items.delete(seq.head + offset)
+  end
+
+  return Seq(items: items, head: seq.head + count)
+end
+
+## The list without its last `count` elements (at most the length).
+export def drop_back(seq: Seq, count: Int) -> Seq
+  last = seq.head + length(seq) - 1
+  items = seq.items
+  for offset in 0...count
+    items = items.delete(last - offset)
+  end
+
+  return Seq(items: items, head: seq.head)
+end
+
+## The list with the element at `index` (inside the list) replaced.
+export def set(seq: Seq, index: Int, element: Bytes) -> Seq
+  return Seq(items: seq.items.put(seq.head + index, element), head: seq.head)
+end
+
+## All the elements in order: O(n), for the commands that rebuild the list
+## (LINSERT, LREM), as they do in Redis.
+export def to_list(seq: Seq) -> List[Bytes]
   picked: List[Bytes] = []
-  for index in span.first..span.last
-    picked = picked.push(seq.items.get(seq.head + index, "".bytes))
+  for offset in 0...length(seq)
+    picked = picked.push(seq.items.get(seq.head + offset, "".bytes))
   end
 
   return picked
+end
+
+export def from_list(elements: List[Bytes]) -> Seq
+  items: Map[Int, Bytes] = {}
+  for index in 0...elements.size
+    items = items.put(index, elements[index])
+  end
+
+  return Seq(items: items, head: 0)
 end
 
 ## The range `start` to `stop` of a list of `size` elements as Redis reads it

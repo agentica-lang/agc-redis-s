@@ -138,6 +138,20 @@ export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String
   end
 end
 
+## A number that is zero or more (Redis's `getPositiveLongFromObjectOrReply`):
+## the same `message` answers a word that is no number and a negative one.
+export def positive(text: Bytes, message: String) -> Result[Int]
+  case parse_int(text)
+    none -> return error(message)
+    some(value) ->
+      if value < 0
+        return error(message)
+      end
+
+      return ok(value)
+  end
+end
+
 def bad_expire(command: String) -> Result[Int]
   return error("ERR invalid expire time in '#{command}' command")
 end

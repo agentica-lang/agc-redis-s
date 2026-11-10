@@ -4,6 +4,7 @@
 import Args from "../args"
 import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
+import Replies from "replies"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
@@ -73,6 +74,6 @@ end
 def range_reply(seq: Seq, start: Int, stop: Int) -> Reply
   case Lists.span_of(Lists.length(seq), start, stop)
     none -> return Reply.Array([])
-    some(span) -> return Reply.Array(Lists.slice(seq, span).map do |element| Reply.Bulk(element) end)
+    some(span) -> return Replies.range(seq, span, false)
   end
 end
