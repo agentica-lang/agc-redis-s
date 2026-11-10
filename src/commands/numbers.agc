@@ -1,16 +1,19 @@
-## INCR, DECR, INCRBY and DECRBY. Checked against Redis 7.2 t_string.c
-## (incrDecrCommand, incrbyCommand, decrbyCommand), object.c
-## (getLongLongFromObjectOrReply) and util.c (string2ll). The number is kept as
-## its text, as Redis shows it: a value built by APPEND is joined here, and
-## written back anyway. INCRBYFLOAT comes in the next change.
+## INCR, DECR, INCRBY, DECRBY and INCRBYFLOAT. Checked against Redis 7.2
+## t_string.c (incrDecrCommand, incrbyCommand, decrbyCommand,
+## incrbyfloatCommand), object.c (getLongLongFromObjectOrReply,
+## getLongDoubleFromObjectOrReply, createStringObjectFromLongDouble) and util.c
+## (string2ll, string2ld, ld2string). The number is kept as its text, as Redis
+## shows it: a value built by APPEND is joined here, and written back anyway.
 
 import Args from "args"
 import {Call, Command, Outcome, fail, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
+import LongDouble from "../store/long_double"
 import {Value, joined_text} from "../store/value"
 
 NOT_INT = "ERR value is not an integer or out of range"
+NOT_FLOAT = "ERR value is not a valid float"
 OVERFLOW = "ERR increment or decrement would overflow"
 INT_MAX = 9_223_372_036_854_775_807
 INT_MIN = -9_223_372_036_854_775_807 - 1
@@ -21,6 +24,7 @@ export def commands() -> List[Command]
     Command(name: "decr", arity: 2, handler: &decr),
     Command(name: "incrby", arity: 3, handler: &incrby),
     Command(name: "decrby", arity: 3, handler: &decrby),
+    Command(name: "incrbyfloat", arity: 3, handler: &incrbyfloat),
   ]
 end
 
@@ -74,5 +78,28 @@ def add_to(call: Call, delta: Int) -> Outcome
 
       total = old + delta
       return write(call, Keyspace.put(call.keyspace, key, Value.Str("#{total}".bytes)), Reply.Integer(total))
+  end
+end
+
+# A `long double` sum, printed as Redis prints it (store/long_double.agc). The
+# value is read before the increment; both fail with the same text.
+def incrbyfloat(call: Call) -> Outcome
+  key = call.args[0]
+  case LongDouble.parse(held_text(call, key))
+    none -> return fail(call, NOT_FLOAT)
+    some(old) ->
+      case LongDouble.parse(call.args[1])
+        none -> return fail(call, NOT_FLOAT)
+        some(delta) -> return float_sum(call, key, LongDouble.add(old, delta))
+      end
+  end
+end
+
+def float_sum(call: Call, key: Bytes, total: Optional[LongDouble.Ext]) -> Outcome
+  case total
+    none -> return fail(call, "ERR increment would produce NaN or Infinity")
+    some(sum) ->
+      shown = LongDouble.format(sum)
+      return write(call, Keyspace.put(call.keyspace, key, Value.Str(shown)), Reply.Bulk(shown))
   end
 end

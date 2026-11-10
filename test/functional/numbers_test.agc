@@ -2,7 +2,7 @@ import Table from "../../src/commands/table"
 import {Databases, fresh, space_at} from "../../src/store/databases"
 import Keyspace from "../../src/store/keyspace"
 import {joined_text, pending?} from "../../src/store/value"
-import {exchange, run_requests, talk, words} from "../support"
+import {exchange, request, run_requests, talk, words} from "../support"
 import Prop from "pkg/prop/prop"
 
 STEP = 4_294_967_296
@@ -116,48 +116,104 @@ def test_increments_follow_a_map() -> Result[Void]
   end
 end
 
-# What a model does not say: the texts that are not integers (a space, a zero
-# first, a decimal point, a plus), a bad increment before a bad value, the
-# least Int with DECRBY, the last value before each end, and a value built by APPEND (joined, then stored as the
-# number).
-def test_texts_of_the_number_commands() -> Result[Void]
-  result = talk([
-    ["INCR", "a"],
-    ["SET", "s", " 1"],
-    ["INCR", "s"],
-    ["SET", "s", "01"],
-    ["DECR", "s"],
-    ["SET", "s", "1.5"],
-    ["INCRBY", "s", "1"],
-    ["SET", "s", "+1"],
-    ["INCR", "s"],
-    ["INCRBY", "s", "x"],
-    ["INCRBY", "a", "1.5"],
-    ["DECRBY", "a", "-9223372036854775808"],
-    ["SET", "m", "9223372036854775806"],
-    ["INCR", "m"],
-    ["INCR", "m"],
-    ["SET", "n", "-9223372036854775807"],
-    ["DECR", "n"],
-    ["DECR", "n"],
-    ["APPEND", "p", "1"],
-    ["APPEND", "p", "2"],
-    ["INCR", "p"],
-    ["GET", "p"],
-  ])
+# The bytes of several requests of text words.
+def many(requests: List[List[String]]) -> Bytes
+  return Bytes.concat(requests.map do |r| words(r) end)
+end
 
+# What a model does not say: the texts that are not integers (a space, a zero
+# first, a decimal point, a plus, empty, "-0", 20 digits, a NUL byte), a bad
+# increment before a bad value, the least Int with DECRBY, the last value before
+# each end, a value built by APPEND, and INCRBYFLOAT: the examples of Redis's
+# documentation, the errors, and "+1", which strtold reads as a float.
+def test_texts_of_the_number_commands() -> Result[Void]
+  nul = Bytes.from_list([49, 0]).unwrap!
+  result = exchange(
+    fresh(),
+    Bytes.concat([
+      many([
+        ["INCR", "a"],
+        ["SET", "s", " 1"],
+        ["INCR", "s"],
+        ["SET", "s", "01"],
+        ["DECR", "s"],
+        ["SET", "s", "1.5"],
+        ["INCRBY", "s", "1"],
+        ["SET", "s", "+1"],
+        ["INCR", "s"],
+        ["SET", "s", ""],
+        ["INCR", "s"],
+        ["SET", "s", "-0"],
+        ["INCR", "s"],
+        ["SET", "s", "12345678901234567890"],
+        ["INCR", "s"],
+        ["INCRBY", "s", "x"],
+        ["INCRBY", "a", "1.5"],
+        ["DECRBY", "a", "-9223372036854775808"],
+        ["SET", "m", "9223372036854775806"],
+        ["INCR", "m"],
+        ["INCR", "m"],
+        ["SET", "n", "-9223372036854775807"],
+        ["DECR", "n"],
+        ["DECR", "n"],
+        ["APPEND", "p", "1"],
+        ["APPEND", "p", "2"],
+        ["INCR", "p"],
+        ["GET", "p"],
+      ]),
+      request(["SET".bytes, "z".bytes, nul]),
+      many([
+        ["INCR", "z"],
+        ["SET", "f", "10.50"],
+        ["INCRBYFLOAT", "f", "0.1"],
+        ["INCRBYFLOAT", "f", "-5"],
+        ["SET", "m", "5.0e3"],
+        ["INCRBYFLOAT", "m", "2.0e2"],
+        ["INCRBYFLOAT", "new", "1.5"],
+        ["INCRBYFLOAT", "f", "x"],
+        ["INCRBYFLOAT", "f", "inf"],
+        ["INCRBYFLOAT", "f", " 1"],
+        ["INCRBYFLOAT", "s", "1"],
+        ["SET", "w", "+1"],
+        ["INCRBYFLOAT", "w", "1"],
+        ["SET", "t", "abc"],
+        ["INCRBYFLOAT", "t", "1"],
+        ["GET", "f"],
+        ["APPEND", "q", "1"],
+        ["APPEND", "q", "2"],
+        ["INCRBYFLOAT", "q", "0.5"],
+      ]),
+    ]),
+  )
+
+  bad = "-ERR value is not an integer or out of range\r\n"
   expected = [
     ":1\r\n",
-    "+OK\r\n-ERR value is not an integer or out of range\r\n",
-    "+OK\r\n-ERR value is not an integer or out of range\r\n",
-    "+OK\r\n-ERR value is not an integer or out of range\r\n",
-    "+OK\r\n-ERR value is not an integer or out of range\r\n",
-    "-ERR value is not an integer or out of range\r\n",
-    "-ERR value is not an integer or out of range\r\n",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    "+OK\r\n#{bad}",
+    bad,
+    bad,
     "-ERR decrement would overflow\r\n",
     "+OK\r\n:9223372036854775807\r\n-ERR increment or decrement would overflow\r\n",
     "+OK\r\n:-9223372036854775808\r\n-ERR increment or decrement would overflow\r\n",
     ":1\r\n:2\r\n:13\r\n$2\r\n13\r\n",
+    "+OK\r\n#{bad}",
+    "+OK\r\n$4\r\n10.6\r\n$3\r\n5.6\r\n",
+    "+OK\r\n$4\r\n5200\r\n",
+    "$3\r\n1.5\r\n",
+    "-ERR value is not a valid float\r\n",
+    "-ERR increment would produce NaN or Infinity\r\n",
+    "-ERR value is not a valid float\r\n",
+    "$20\r\n12345678901234567891\r\n",
+    "+OK\r\n$1\r\n2\r\n",
+    "+OK\r\n-ERR value is not a valid float\r\n",
+    "$3\r\n5.6\r\n",
+    ":1\r\n:2\r\n$4\r\n12.5\r\n",
   ].join("")
 
   return Test.eq(result.reply, expected.bytes)
