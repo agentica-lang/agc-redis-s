@@ -30,6 +30,13 @@ def test_errors_keep_the_stream_in_step() -> Result[Void]
   return Test.eq(exchange(fresh(), sent).reply, expected)
 end
 
+# A batch of one reply takes its own path in `Requests.run_all`.
+def test_a_lone_quit_closes() -> Result[Void]
+  result = exchange(fresh(), words(["QUIT"]))
+  try Test.eq(result.reply, "+OK\r\n".bytes)
+  return Test.assert(result.closed, "a lone QUIT closes the connection")
+end
+
 def test_protocol_error_closes() -> Result[Void]
   result = exchange(fresh(), "*x\r\n".bytes)
   try Test.eq(result.reply, "-ERR Protocol error: invalid multibulk length\r\n".bytes)
