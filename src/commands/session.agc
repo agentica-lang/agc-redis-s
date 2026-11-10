@@ -8,6 +8,7 @@ import {Reply} from "../resp/reply"
 import Writer from "../resp/writer"
 import {Session} from "../session/session"
 import {Databases, space_at, sweep, with_space} from "../store/databases"
+import Generator from "../store/generator"
 
 ## How often the store task sweeps; Redis runs its active expiry 10 times a
 ## second (hz 10).
@@ -117,20 +118,21 @@ def run_for(
   argv: List[Bytes],
   now_ms: Int,
 ) -> Ran
+  first = Generator.advance(store.seed, now_ms)
   call = Call(
     keyspace: space_at(store.databases, session.db),
     databases: store.databases,
     session: session,
     args: argv.drop(1),
     now_ms: now_ms,
-    random: store.seed * 2_147_483_648 + advanced(store.seed, now_ms),
+    random: store.seed * Generator.MODULUS + first,
     client_id: client_id,
     clients: store.sessions.size,
     table: table,
   )
 
   outcome = Dispatch.execute(table, argv[0], call)
-  next_store = apply(store, session.db, outcome.change).with(seed: advanced(advanced(store.seed, now_ms), now_ms))
+  next_store = apply(store, session.db, outcome.change).with(seed: Generator.advance(first, now_ms))
   if outcome.session != session
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
@@ -145,13 +147,6 @@ def encoded(replies: List[Reply]) -> Bytes
   end
 
   return Bytes.concat(replies.map do |r| Writer.encode(r) end)
-end
-
-# A linear congruential step; a request uses two of them, so `Call.random` has 62
-# bits; the product stays under 2^62, so no overflow. The
-# clock is mixed in so the sequence is not the same after every start.
-def advanced(seed: Int, now_ms: Int) -> Int
-  return (seed * 1_103_515_245 + 12_345 + now_ms % 65_536) % 2_147_483_648
 end
 
 def apply(store: Store, db: Int, change: Change) -> Store
