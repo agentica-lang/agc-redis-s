@@ -7,6 +7,8 @@ import Requests from "../commands/session"
 import {Store} from "../commands/session"
 import {Message} from "message"
 
+BATCH = 32
+
 ## What the task works with; `main` builds it and the task builds nothing
 ## (`Task.spawn` passes one argument, so the inbox is in it). The
 ## clock is the only way the task learns the time, so a test passes its own.
@@ -39,13 +41,31 @@ def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State
     case inbox.recv(Requests.SWEEP_MS)
       ok(message) ->
         now = clock.call()
-        state = handle(swept(state, now), message, now)
+        state = drained(inbox, handle(swept(state, now), message, now), now)
       error(_) ->
         state = swept(state, clock.call())
         if inbox.closed? and inbox.empty?
           break
         end
     end
+  end
+
+  return state
+end
+
+# The messages that already wait in the inbox run with the same clock reading
+# (at most `BATCH`, so the reading is never more than a few milliseconds old
+# and the sweep is not starved): one clock read per batch, not per message.
+def drained(inbox: Channel[Message], first: State, now: Int) -> State
+  state = first
+  taken = 0
+  while taken < BATCH and not inbox.empty?
+    case inbox.recv(Requests.SWEEP_MS)
+      ok(message) -> state = handle(state, message, now)
+      error(_) -> break
+    end
+
+    taken += 1
   end
 
   return state

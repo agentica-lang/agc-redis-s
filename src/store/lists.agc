@@ -71,6 +71,11 @@ export def get(seq: Seq, index: Int) -> Optional[Bytes]
   return seq.items.get(seq.head + index)
 end
 
+## The element at an index inside the list, one lookup with no `Optional`.
+export def element(seq: Seq, index: Int) -> Bytes
+  return seq.items.get(seq.head + index, "".bytes)
+end
+
 ## The list with `element` before its first one (LPUSH of one element).
 export def push_front(seq: Seq, element: Bytes) -> Seq
   return Seq(items: seq.items.put(seq.head - 1, element), head: seq.head - 1)
@@ -89,7 +94,7 @@ export def push(seq: Seq, element: Bytes, side: End) -> Seq
   end
 end
 
-## The element at `end` of a non-empty list.
+## The element at `side` of a non-empty list.
 export def edge(seq: Seq, side: End) -> Bytes
   index = 0
   case side
@@ -97,7 +102,7 @@ export def edge(seq: Seq, side: End) -> Bytes
     End.Tail -> index = length(seq) - 1
   end
 
-  return get(seq, index).unwrap_or("".bytes)
+  return element(seq, index)
 end
 
 ## The list without its `count` elements at `side` (at most the length).

@@ -5,17 +5,36 @@ import {Reply} from "reply"
 CR = 13
 LF = 10
 SPACE = 32
+CRLF = "\r\n".bytes
+HEADER_COUNT = 1024
+HEADERS = (0...HEADER_COUNT).to_a.map do |size| "$#{size}\r\n".bytes end
 
 export def encode(reply: Reply) -> Bytes
   return case reply
     Reply.Simple(text) -> line("+".bytes, text.bytes)
     Reply.Error(text) -> line("-".bytes, text)
     Reply.Integer(n) -> ":#{n}\r\n".bytes
-    Reply.Bulk(data) -> Bytes.concat(["$#{data.size}\r\n".bytes, data, "\r\n".bytes])
+    Reply.Bulk(data) -> Bytes.concat([bulk_header(data.size), data, CRLF])
     Reply.NilBulk -> "$-1\r\n".bytes
     Reply.Array(items) -> Bytes.concat(["*#{items.size}\r\n".bytes].concat(items.map do |item| encode(item) end))
     Reply.NilArray -> "*-1\r\n".bytes
+    Reply.Raw(bytes) -> bytes
   end
+end
+
+## The `$N\r\n` line before a bulk string of N bytes; the common small sizes
+## are built once (Redis's `shared.bulkhdr`).
+export def bulk_header(size: Int) -> Bytes
+  if size < HEADER_COUNT
+    return HEADERS[size]
+  end
+
+  return "$#{size}\r\n".bytes
+end
+
+## The `*N\r\n` line before an array of N items.
+export def array_header(size: Int) -> Bytes
+  return "*#{size}\r\n".bytes
 end
 
 # A CR or LF inside a status line ends it early, so a client that sends one in
