@@ -46,7 +46,7 @@ end
 ## The number a text means as `strtold` reads it, or none when `string2ld`
 ## refuses: empty, 5120 bytes or more, not entirely a number (a sign, digits
 ## with an optional `.` and exponent, a hex float `0x1.8p3`, `inf`, `infinity`),
-## `nan`, a spaces first, or out of range (an overflow, or a non-zero value that
+## `nan`, a space first, or out of range (an overflow, or a non-zero value that
 ## rounds to zero).
 export def parse(text: Bytes) -> Optional[Ext]
   if text.empty? or text.size >= MAX_CHARS
@@ -120,7 +120,7 @@ export def format(x: Ext) -> Bytes
   if x.exp >= 0
     whole = Bignum.shift_left(scaled, x.exp)
   else
-    whole = Bignum.shift_right_even(scaled, 0 - x.exp)
+    whole = Bignum.shift_right_even(scaled, -x.exp)
   end
 
   digits = Bignum.to_decimal(whole)
