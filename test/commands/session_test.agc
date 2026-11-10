@@ -34,8 +34,7 @@ def test_a_write_lands_in_the_selected_database() -> Result[Void]
   return Test.eq(size(space_at(state.databases, 1)), 0)
 end
 
-# A sweep is due every 100 ms, and also when the clock went back: a negative gap
-# must not stop the sweeps until the clock catches up.
+# A sweep is due every 100 ms, and when the clock went back (a negative gap).
 def test_sweep_is_due_by_time_and_after_a_clock_step_back() -> Result[Void]
   try Test.eq(Requests.sweep_due?(1000, 1099), false)
   try Test.eq(Requests.sweep_due?(1000, 1100), true)
