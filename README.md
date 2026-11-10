@@ -38,7 +38,7 @@ Read `AGENTS.md` for the layout and how to add a command.
 | 0 | Layout, CI, PING and ECHO | done |
 | 1 | RESP2 reader and writer | in progress |
 | 2 | Connection and server commands | done |
-| 3 | Strings | planned |
+| 3 | Strings | in progress |
 | 4 | Keys and expiry | planned |
 | 5 | Hashes, lists, sets, sorted sets | planned |
 | 6 | Transactions, pub/sub | planned |

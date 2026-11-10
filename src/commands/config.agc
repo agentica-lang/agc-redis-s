@@ -8,6 +8,7 @@ import {Call, Command, Outcome, container, fail, fail_bytes, reply} from "comman
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
 import Glob from "../store/glob"
+import Strings from "../store/strings"
 
 # No persistence, so `save` is empty and `appendonly` is no.
 SETTINGS = [
@@ -18,7 +19,7 @@ SETTINGS = [
   Setting(name: "maxclients", value: "10000"),
   Setting(name: "maxmemory", value: "0"),
   Setting(name: "maxmemory-policy", value: "noeviction"),
-  Setting(name: "proto-max-bulk-len", value: "536870912"),
+  Setting(name: "proto-max-bulk-len", value: "#{Strings.MAX_BYTES}"),
   Setting(name: "requirepass", value: ""),
 ]
 
