@@ -18,13 +18,12 @@ DEFAULT_COUNT = 10
 # A cursor past every hash: the scan answers an empty last page.
 BEYOND = 9_000_000_000
 
-## What the options say; `refused` is the error reply.
+## What the options say.
 export struct Options
   count: Int = DEFAULT_COUNT
   pattern: Optional[Bytes] = none
   ## The lowercase name after TYPE; a name that is no type lists nothing.
   type: Optional[String] = none
-  refused: Optional[String] = none
 end
 
 export def commands() -> List[Command]
@@ -40,7 +39,7 @@ export def matches?(options: Options, name: Bytes) -> Bool
 end
 
 ## `typed` is true for SCAN; HSCAN has no TYPE option (a syntax error).
-export def read_options(words: List[Bytes], typed: Bool) -> Options
+export def read_options(words: List[Bytes], typed: Bool) -> Result[Options]
   found = Options()
   i = 0
   while i < words.size
@@ -48,10 +47,10 @@ export def read_options(words: List[Bytes], typed: Bool) -> Options
     has_value = i + 1 < words.size
     if word == "count" and has_value
       case Integer.parse(words[i + 1])
-        none -> return found.with(refused: some(Errors.NOT_INT))
+        none -> return error(Errors.NOT_INT)
         some(count) ->
           if count < 1
-            return found.with(refused: some(Errors.SYNTAX))
+            return error(Errors.SYNTAX)
           end
 
           found = found.with(count: count)
@@ -61,13 +60,13 @@ export def read_options(words: List[Bytes], typed: Bool) -> Options
     elsif word == "type" and has_value and typed
       found = found.with(type: some(Args.lower(words[i + 1])))
     else
-      return found.with(refused: some(Errors.SYNTAX))
+      return error(Errors.SYNTAX)
     end
 
     i += 2
   end
 
-  return found
+  return ok(found)
 end
 
 ## `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
@@ -112,12 +111,13 @@ def scan(call: Call) -> Outcome
 end
 
 def scan_from(call: Call, cursor: Int) -> Outcome
-  options = read_options(call.args.drop(1), true)
-  case options.refused
-    some(text) -> return fail(call, text)
-    none -> nil
+  case read_options(call.args.drop(1), true)
+    error(text) -> return fail(call, text)
+    ok(options) -> return scan_page(call, cursor, options)
   end
+end
 
+def scan_page(call: Call, cursor: Int, options: Options) -> Outcome
   names = call.keyspace.entries.keys
   page = Scan.page(names, cursor, options.count)
   listed = page.keys.select do |key| wanted?(call, options, key) end

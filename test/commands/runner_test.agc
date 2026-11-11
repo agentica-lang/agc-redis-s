@@ -1,6 +1,7 @@
+import Engine from "../../src/commands/engine"
+import Runner from "../../src/commands/runner"
 import {Call, Command, Outcome, write} from "../../src/commands/command"
-import Requests from "../../src/commands/session"
-import {Store} from "../../src/commands/session"
+import {Store} from "../../src/commands/engine"
 import Table from "../../src/commands/table"
 import {Reply} from "../../src/resp/reply"
 import {fresh, space_at} from "../../src/store/databases"
@@ -16,7 +17,7 @@ def store_key(call: Call) -> Outcome
 end
 
 def run(table: Map[String, Command], store: Store, line: List[String]) -> Store
-  return Requests.run(table, store, 1, line.map do |w| w.bytes end, 0).store
+  return Runner.run(table, store, 1, line.map do |w| w.bytes end, 0).store
 end
 
 # The new keyspace of a command goes back to the database it ran in, also for
@@ -24,8 +25,8 @@ end
 def test_a_write_lands_in_the_selected_database() -> Result[Void]
   row = Command(name: "store", arity: 2, handler: &store_key)
   table = Table.build().put("store", row)
-  start = Requests.start(fresh())
-  state = Requests.join(start, 1)
+  start = Engine.start(fresh())
+  state = Engine.join(start, 1)
   for line in [["store", "a"], ["select", "5"], ["store", "b"], ["store", "c"], ["select", "0"]]
     state = run(table, state, line)
   end
@@ -37,18 +38,18 @@ end
 
 # A sweep is due every 100 ms, and when the clock went back (a negative gap).
 def test_sweep_is_due_by_time_and_after_a_clock_step_back() -> Result[Void]
-  try Test.eq(Requests.sweep_due?(1000, 1099), false)
-  try Test.eq(Requests.sweep_due?(1000, 1100), true)
-  try Test.eq(Requests.sweep_due?(1000, 999), true)
-  return Test.eq(Requests.sweep_due?(1000, 1000), false)
+  try Test.eq(Engine.sweep_due?(1000, 1099), false)
+  try Test.eq(Engine.sweep_due?(1000, 1100), true)
+  try Test.eq(Engine.sweep_due?(1000, 999), true)
+  return Test.eq(Engine.sweep_due?(1000, 1000), false)
 end
 
 # A request takes two steps of the generator, `Call.random` having both: the
 # next request does not see the numbers of the one before.
 def test_a_request_advances_the_seed_by_two_steps() -> Result[Void]
-  started = Requests.start(fresh())
-  state = Requests.join(started, 1)
-  done = Requests.run(Table.build(), state, 1, ["PING".bytes], 7)
+  started = Engine.start(fresh())
+  state = Engine.join(started, 1)
+  done = Runner.run(Table.build(), state, 1, ["PING".bytes], 7)
   first = Generator.advance(state.seed, 7)
   return Test.eq(done.store.seed, Generator.advance(first, 7))
 end

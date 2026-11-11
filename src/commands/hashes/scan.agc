@@ -31,12 +31,13 @@ def hscan(call: Call) -> Outcome
 end
 
 def scan_fields(call: Call, fields: Map[Bytes, Bytes], cursor: Int) -> Outcome
-  options = Scan.read_options(call.args.drop(2), false)
-  case options.refused
-    some(text) -> return fail(call, text)
-    none -> nil
+  case Scan.read_options(call.args.drop(2), false)
+    error(text) -> return fail(call, text)
+    ok(options) -> return scan_page(call, fields, cursor, options)
   end
+end
 
+def scan_page(call: Call, fields: Map[Bytes, Bytes], cursor: Int, options: Scan.Options) -> Outcome
   page = ScanPages.page(fields.keys, cursor, options.count)
   listed = page.keys.select do |name| Scan.matches?(options, name) end
   items: List[Reply] = []

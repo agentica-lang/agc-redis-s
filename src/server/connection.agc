@@ -3,7 +3,7 @@
 ## back through `Dock.send` from the store task.
 
 import Dock from "pkg/dock/dock"
-import Requests from "../commands/session"
+import Writer from "../resp/writer"
 import {Ending} from "../resp/stream"
 import {Fed} from "../resp/stream"
 import Stream from "../resp/stream"
@@ -95,7 +95,7 @@ def drain(conn: Dock.Conn, inbox: Channel[Message], fed: Fed) -> Drained
 
   case fed.ending
     Ending.Open -> return Drained.More(fed.stream)
-    Ending.Invalid(text) -> return Drained.Broken(Requests.protocol_error_reply(text))
+    Ending.Invalid(text) -> return Drained.Broken(Writer.protocol_error(text))
     Ending.Overflow -> return Drained.Broken("".bytes)
   end
 end

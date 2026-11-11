@@ -22,7 +22,7 @@ export struct Keyspace
   ## The index of `deadlines`: the keys that die in each second (the bucket is
   ## `deadline / 1000`). Every key with a deadline is in exactly one bucket,
   ## and a bucket is never empty, so a sweep reads only the buckets that are due.
-  due: Map[Int, Map[Bytes, Bool]] = {}
+  due: Map[Int, Set[Bytes]] = {}
   ## A lower bound of the earliest deadline: while the clock has not passed it
   ## no key is due and `sweep` does nothing, without looking at the keys.
   next_due: Int = NEVER
@@ -78,7 +78,7 @@ end
 export def expire_at(keyspace: Keyspace, key: Bytes, when: Int) -> Keyspace
   space = unindexed(keyspace, key)
   id = bucket_of(when)
-  bucket = space.due.get(id, {}).put(key, true)
+  bucket = space.due.get(id, Set.new([])).add(key)
   return space.with(
     deadlines: space.deadlines.put(key, when),
     due: space.due.put(id, bucket),
@@ -145,7 +145,7 @@ def sweep_bucket(state: Sweeping, id: Int, now_ms: Int) -> Sweeping
   space = state.space
   removed = state.removed
   left = state.left
-  for key in space.due.get(id, {}).keys
+  for key in space.due.get(id, Set.new([])).to_a
     deadline = space.deadlines.get(key, 0)
     if now_ms > deadline and removed < SWEEP_BATCH
       space = delete(space, key)
@@ -164,9 +164,9 @@ def unindexed(keyspace: Keyspace, key: Bytes) -> Keyspace
     none -> return keyspace
     some(deadline) ->
       id = bucket_of(deadline)
-      bucket = keyspace.due.get(id, {}).delete(key)
+      bucket = keyspace.due.get(id, Set.new([])).delete(key)
       due = keyspace.due.delete(id)
-      if bucket.size > 0
+      if not bucket.empty?
         due = keyspace.due.put(id, bucket)
       end
 

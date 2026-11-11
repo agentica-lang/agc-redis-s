@@ -2,7 +2,8 @@
 ## family, TTL, PERSIST, and the commands that keep or drop a deadline. The
 ## clock is an argument of `exchange`, so no test sleeps.
 
-import Requests from "../../src/commands/session"
+import Engine from "../../src/commands/engine"
+import Runner from "../../src/commands/runner"
 import Table from "../../src/commands/table"
 import {Databases, fresh} from "../../src/store/databases"
 import {Command} from "../../src/commands/command"
@@ -722,14 +723,14 @@ end
 # The server run with the sweep operations in place: an answer depends on one
 # only through DBSIZE and INFO, which count the keys not swept yet.
 def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: List[Int]) -> Bytes
-  started = Requests.start(fresh())
-  store = Requests.join(started, 1)
+  started = Engine.start(fresh())
+  store = Engine.join(started, 1)
   replies: List[Bytes] = []
   for i in 0...ops.size
     if ops[i].concat([0])[0] % 28 == 9
-      store = Requests.expire_keys(store, times[i])
+      store = Engine.expire_keys(store, times[i])
     else
-      done = Requests.run(table, store, 1, argv_of(ops[i]), times[i])
+      done = Runner.run(table, store, 1, argv_of(ops[i]), times[i])
       store = done.store
       replies = replies.push(done.reply)
     end

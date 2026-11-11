@@ -2,9 +2,10 @@
 ## never sees a half-done one, as with the single thread of Redis.
 
 import Dock from "pkg/dock/dock"
+import Engine from "../commands/engine"
+import Runner from "../commands/runner"
 import {Command} from "../commands/command"
-import Requests from "../commands/session"
-import {Store} from "../commands/session"
+import {Store} from "../commands/engine"
 import {Message} from "message"
 
 BATCH = 32
@@ -38,7 +39,7 @@ end
 def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State
   state = first
   while true
-    case inbox.recv(Requests.SWEEP_MS)
+    case inbox.recv(Engine.SWEEP_MS)
       ok(message) ->
         now = clock.call()
         state = drained(inbox, handle(swept(state, now), message, now), now)
@@ -60,7 +61,7 @@ def drained(inbox: Channel[Message], first: State, now: Int) -> State
   state = first
   taken = 0
   while taken < BATCH and not inbox.empty?
-    case inbox.recv(Requests.SWEEP_MS)
+    case inbox.recv(Engine.SWEEP_MS)
       ok(message) -> state = handle(state, message, now)
       error(_) -> break
     end
@@ -74,26 +75,26 @@ end
 # The active expiry runs between messages, at most every `SWEEP_MS`, also under
 # a load that never lets the receive time out.
 def swept(state: State, now: Int) -> State
-  if not Requests.sweep_due?(state.swept_at, now)
+  if not Engine.sweep_due?(state.swept_at, now)
     return state
   end
 
-  return state.with(store: Requests.expire_keys(state.store, now), swept_at: now)
+  return state.with(store: Engine.expire_keys(state.store, now), swept_at: now)
 end
 
 def handle(state: State, message: Message, now: Int) -> State
   case message
-    Message.Open(conn) -> return state.with(store: Requests.join(state.store, conn.id))
+    Message.Open(conn) -> return state.with(store: Engine.join(state.store, conn.id))
     Message.Exec(conn, requests) -> return exec(state, conn, requests, now)
     Message.Close(conn, farewell) -> return hang_up(state, conn, farewell)
-    Message.Gone(id) -> return state.with(store: Requests.leave(state.store, id))
+    Message.Gone(id) -> return state.with(store: Engine.leave(state.store, id))
   end
 end
 
 # A client that was dropped or already quit has no session, so the requests it
 # left in the inbox do nothing.
 def exec(state: State, conn: Dock.Conn, requests: List[List[Bytes]], now: Int) -> State
-  done = Requests.run_all(state.table, state.store, conn.id, requests, now)
+  done = Runner.run_all(state.table, state.store, conn.id, requests, now)
   send(conn, done.reply)
   next_state = state.with(store: done.store)
   if done.close
@@ -114,7 +115,7 @@ end
 # A client that quit already has no session and its connection is closed: the
 # close that its handler sends after the end it saw does nothing.
 def hang_up(state: State, conn: Dock.Conn, farewell: Bytes) -> State
-  if not Requests.joined?(state.store, conn.id)
+  if not Engine.joined?(state.store, conn.id)
     return state
   end
 
@@ -126,5 +127,5 @@ end
 def close(state: State, conn: Dock.Conn, farewell: Bytes) -> State
   send(conn, farewell)
   Dock.close(conn)
-  return state.with(store: Requests.leave(state.store, conn.id))
+  return state.with(store: Engine.leave(state.store, conn.id))
 end
