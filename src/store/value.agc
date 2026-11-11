@@ -21,6 +21,11 @@
 ## `Map` step, as does an element by index. A list is never empty: removing its
 ## last element deletes the key (store/lists.agc).
 ##
+## A set is `Members`: the member to its slot number, and the slots by number
+## (0 up to size - 1, no gaps), so a member costs one `Map` step to find and one
+## to pick by position, which SPOP and SRANDMEMBER need. Removing a member moves
+## the last one into its slot. A set is never empty (store/sets.agc).
+##
 ## The string helpers below answer for a string only; a command checks the
 ## variant first (`string?`) and answers WRONGTYPE for the others.
 export enum Value
@@ -28,6 +33,7 @@ export enum Value
   Appended(List[Bytes], Int)
   Hash(Map[Bytes, Bytes])
   Deque(Map[Int, Bytes], Int)
+  Members(Map[Bytes, Int], Map[Int, Bytes])
 end
 
 ## The name `TYPE` and `SCAN ... TYPE` use.
@@ -37,6 +43,7 @@ export def type_name(value: Value) -> String
     Value.Appended(_, _) -> return "string"
     Value.Hash(_) -> return "hash"
     Value.Deque(_, _) -> return "list"
+    Value.Members(_, _) -> return "set"
   end
 end
 
@@ -52,6 +59,7 @@ export def joined_text(value: Value) -> Bytes
     Value.Appended(pieces, _) -> return Bytes.concat(pieces)
     Value.Hash(_) -> return "".bytes
     Value.Deque(_, _) -> return "".bytes
+    Value.Members(_, _) -> return "".bytes
   end
 end
 
@@ -62,6 +70,7 @@ export def value_size(value: Value) -> Int
     Value.Appended(_, total) -> return total
     Value.Hash(_) -> return 0
     Value.Deque(_, _) -> return 0
+    Value.Members(_, _) -> return 0
   end
 end
 
@@ -82,6 +91,7 @@ export def with_more(value: Value, more: Bytes) -> Value
     Value.Appended(pieces, total) -> return Value.Appended(pieces.push(more), total + more.size)
     Value.Hash(_) -> return value
     Value.Deque(_, _) -> return value
+    Value.Members(_, _) -> return value
   end
 end
 
@@ -92,5 +102,6 @@ export def pending?(value: Value) -> Bool
     Value.Appended(_, _) -> return true
     Value.Hash(_) -> return false
     Value.Deque(_, _) -> return false
+    Value.Members(_, _) -> return false
   end
 end

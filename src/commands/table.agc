@@ -22,14 +22,24 @@ import ListSearch from "lists/search"
 import Numbers from "numbers"
 import Scan from "scan"
 import Server from "server"
-import Strings from "strings"
+import SetMembers from "sets/members"
+import SetRandom from "sets/random"
+import SetScan from "sets/scan"
+import StringEdit from "strings/edit"
+import StringRead from "strings/read"
+import StringSet from "strings/set"
+import StringTimed from "strings/timed"
 import Ttl from "ttl"
 
 export def build() -> Map[String, Command]
   rows = Connection.commands().concat(Client.commands())
-  rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands()).concat(Strings.commands())
+  rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands())
   rows = (
-    rows.concat(Numbers.commands())
+    rows.concat(StringRead.commands())
+      .concat(StringSet.commands())
+      .concat(StringTimed.commands())
+      .concat(StringEdit.commands())
+      .concat(Numbers.commands())
       .concat(Ttl.commands())
       .concat(Expire.commands())
       .concat(Keys.commands())
@@ -45,6 +55,9 @@ export def build() -> Map[String, Command]
       .concat(ListEdit.commands())
       .concat(ListSearch.commands())
       .concat(ListMove.commands())
+      .concat(SetMembers.commands())
+      .concat(SetRandom.commands())
+      .concat(SetScan.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end

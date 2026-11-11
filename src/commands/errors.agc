@@ -12,4 +12,5 @@ export LONG_RANGE = "ERR value is out of range, value must between -922337203685
 export NO_SUCH_KEY = "ERR no such key"
 export SAME_OBJECT = "ERR source and destination objects are the same"
 export INVALID_CURSOR = "ERR invalid cursor"
+export OUTPUT_LIMIT = "ERR count is too large for the output limit"
 export BAD_CLIENT_NAME = "ERR Client names cannot contain spaces, newlines or special characters."

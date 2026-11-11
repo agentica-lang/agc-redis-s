@@ -58,7 +58,7 @@ def pop_some(call: Call, side: End, count: Int) -> Outcome
       end
 
       taken = smaller(count, Lists.length(seq))
-      return write(call, left_after(call, seq, side, taken), Replies.popped(seq, side, count))
+      return write(call, left_after(call, seq, side, taken), Replies.popped(seq, side, taken))
   end
 end
 
