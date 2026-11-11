@@ -76,11 +76,11 @@ def test_index_follows_every_change_of_a_deadline() -> Result[Void]
   try Test.eq(Keyspace.put(space, "a".bytes, Value.Str("w".bytes), 1000).due, space.due)
   moved = Keyspace.expire_at(space, "a".bytes, 7200)
   try Test.eq(moved.due.keys, [7])
-  try Test.eq(moved.due.get(7, {}).keys, ["a".bytes])
+  try Test.eq(moved.due.get(7, Set.new([])).to_a, ["a".bytes])
   both = expiring_at(space, "b", 1900)
   rest = Keyspace.delete(both, "a".bytes).due
   try Test.eq(rest.keys, [1])
-  return Test.eq(rest.get(1, {}).keys, ["b".bytes])
+  return Test.eq(rest.get(1, Set.new([])).to_a, ["b".bytes])
 end
 
 # A sweep drops the due keys of every second up to the clock's, keeps the ones of

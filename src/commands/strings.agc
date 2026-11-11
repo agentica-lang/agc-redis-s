@@ -33,7 +33,13 @@ struct Options
   persist: Bool = false
   kind: String = ""
   time: Optional[Bytes] = none
-  valid: Bool = true
+end
+
+# SET takes NX, XX, GET and KEEPTTL; GETEX takes PERSIST. Anything else is a
+# syntax error.
+enum Form
+  Set
+  GetEx
 end
 
 export def commands() -> List[Command]
@@ -122,51 +128,51 @@ def get(call: Call) -> Outcome
   return read_done(call, settled, bulk_or_nil(peek(call, settled, call.args[0])))
 end
 
-# `set` is true for SET (NX, XX, GET, KEEPTTL) and false for GETEX (PERSIST).
-def options(words: List[Bytes], set: Bool) -> Options
+def options(words: List[Bytes], form: Form) -> Result[Options]
+  set = form == Form.Set
   found = Options()
   i = 0
   while i < words.size
     word = Args.lower(words[i])
     timed = ["ex", "px", "exat", "pxat"].include?(word)
     if timed and (found.keepttl or found.persist or (found.kind != "" and found.kind != word) or i + 1 == words.size)
-      return Options(valid: false)
+      return error(Errors.SYNTAX)
     end
 
     case word
       "nx" ->
         if not set or found.xx
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(nx: true)
       "xx" ->
         if not set or found.nx
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(xx: true)
       "get" ->
         if not set
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(get: true)
       "keepttl" ->
         if not set or found.kind != ""
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(keepttl: true)
       "persist" ->
         if set or found.kind != ""
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(persist: true)
       _ ->
         if not timed
-          return Options(valid: false)
+          return error(Errors.SYNTAX)
         end
 
         found = found.with(kind: word, time: some(words[i + 1]))
@@ -176,7 +182,7 @@ def options(words: List[Bytes], set: Bool) -> Options
     i += 1
   end
 
-  return found
+  return ok(found)
 end
 
 # The deadline the options ask for; `none` when they ask for none. The error is
@@ -192,11 +198,13 @@ def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
 end
 
 def set(call: Call) -> Outcome
-  found = options(call.args.drop(2), true)
-  if not found.valid
-    return fail(call, Errors.SYNTAX)
+  case options(call.args.drop(2), Form.Set)
+    error(text) -> return fail(call, text)
+    ok(found) -> return set_timed(call, found)
   end
+end
 
+def set_timed(call: Call, found: Options) -> Outcome
   case deadline_of(call, found)
     error(text) -> return fail(call, text)
     ok(deadline) -> return set_with(call, found, deadline)
@@ -264,11 +272,13 @@ end
 # A missing key answers nil before the time is checked. An absolute time that
 # has passed deletes the key, after the value is read.
 def getex(call: Call) -> Outcome
-  found = options(call.args.drop(1), false)
-  if not found.valid
-    return fail(call, Errors.SYNTAX)
+  case options(call.args.drop(1), Form.GetEx)
+    error(text) -> return fail(call, text)
+    ok(found) -> return getex_with(call, found)
   end
+end
 
+def getex_with(call: Call, found: Options) -> Outcome
   key = call.args[0]
   if foreign?(call, key)
     return wrong_type(call)

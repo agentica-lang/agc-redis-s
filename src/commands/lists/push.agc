@@ -6,7 +6,13 @@
 import {Call, Command, Outcome, reply, wrong_type, write} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
-import {Held, Seq} from "../../store/lists"
+import {End, Held, Seq} from "../../store/lists"
+
+# Whether a missing key is created.
+enum Create
+  Yes
+  No
+end
 
 export def commands() -> List[Command]
   return [
@@ -18,45 +24,37 @@ export def commands() -> List[Command]
 end
 
 def lpush(call: Call) -> Outcome
-  return push(call, true, false)
+  return push(call, End.Head, Create.Yes)
 end
 
 def rpush(call: Call) -> Outcome
-  return push(call, false, false)
+  return push(call, End.Tail, Create.Yes)
 end
 
 def lpushx(call: Call) -> Outcome
-  return push(call, true, true)
+  return push(call, End.Head, Create.No)
 end
 
 def rpushx(call: Call) -> Outcome
-  return push(call, false, true)
+  return push(call, End.Tail, Create.No)
 end
 
-def push(call: Call, front: Bool, only_existing: Bool) -> Outcome
+def push(call: Call, side: End, create: Create) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
     Held.Foreign -> return wrong_type(call)
     Held.Missing ->
-      if only_existing
-        return reply(call, Reply.Integer(0))
+      case create
+        Create.No -> return reply(call, Reply.Integer(0))
+        Create.Yes -> return pushed(call, Lists.empty(), side)
       end
 
-      return pushed(call, Lists.empty(), front)
-    Held.Items(seq) -> return pushed(call, seq, front)
+    Held.Items(seq) -> return pushed(call, seq, side)
   end
 end
 
 # The elements go in one by one, so LPUSH k a b c leaves c b a.
-def pushed(call: Call, old: Seq, front: Bool) -> Outcome
-  seq = call.args.drop(1).reduce(old) do |left, element| add(left, element, front) end
+def pushed(call: Call, old: Seq, side: End) -> Outcome
+  seq = call.args.drop(1).reduce(old) do |left, element| Lists.push(left, element, side) end
   stored = Lists.store(call.keyspace, call.args[0], seq, call.now_ms)
   return write(call, stored, Reply.Integer(Lists.length(seq)))
-end
-
-def add(seq: Seq, element: Bytes, front: Bool) -> Seq
-  if front
-    return Lists.push_front(seq, element)
-  end
-
-  return Lists.push_back(seq, element)
 end

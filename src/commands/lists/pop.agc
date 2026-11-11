@@ -9,7 +9,7 @@ import {Call, Command, Outcome, fail, reply, wrong_arity, wrong_type, write} fro
 import Keyspace from "../../store/keyspace"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
-import {Held, Seq, Span} from "../../store/lists"
+import {End, Held, Seq} from "../../store/lists"
 
 POSITIVE = "ERR value is out of range, must be positive"
 
@@ -18,14 +18,14 @@ export def commands() -> List[Command]
 end
 
 def lpop(call: Call) -> Outcome
-  return pop(call, true)
+  return pop(call, End.Head)
 end
 
 def rpop(call: Call) -> Outcome
-  return pop(call, false)
+  return pop(call, End.Tail)
 end
 
-def pop(call: Call, front: Bool) -> Outcome
+def pop(call: Call, side: End) -> Outcome
   if call.args.size > 2
     return wrong_arity(call)
   end
@@ -33,29 +33,22 @@ def pop(call: Call, front: Bool) -> Outcome
   if call.args.size == 2
     case Args.positive(call.args[1], POSITIVE)
       error(text) -> return fail(call, text)
-      ok(count) -> return pop_some(call, front, count)
+      ok(count) -> return pop_some(call, side, count)
     end
   end
 
-  return pop_one(call, front)
+  return pop_one(call, side)
 end
 
-def pop_one(call: Call, front: Bool) -> Outcome
+def pop_one(call: Call, side: End) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
     Held.Missing -> return reply(call, Reply.NilBulk)
     Held.Foreign -> return wrong_type(call)
-    Held.Items(seq) ->
-      index = 0
-      if not front
-        index = Lists.length(seq) - 1
-      end
-
-      element = Lists.get(seq, index).unwrap_or("".bytes)
-      return write(call, left_after(call, seq, front, 1), Reply.Bulk(element))
+    Held.Items(seq) -> return write(call, left_after(call, seq, side, 1), Reply.Bulk(Lists.edge(seq, side)))
   end
 end
 
-def pop_some(call: Call, front: Bool, count: Int) -> Outcome
+def pop_some(call: Call, side: End, count: Int) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
     Held.Missing -> return reply(call, Reply.NilArray)
     Held.Foreign -> return wrong_type(call)
@@ -65,22 +58,12 @@ def pop_some(call: Call, front: Bool, count: Int) -> Outcome
       end
 
       taken = smaller(count, Lists.length(seq))
-      span = Span(first: 0, last: taken - 1)
-      if not front
-        span = Span(first: Lists.length(seq) - taken, last: Lists.length(seq) - 1)
-      end
-
-      return write(call, left_after(call, seq, front, taken), Replies.range(seq, span, not front))
+      return write(call, left_after(call, seq, side, taken), Replies.popped(seq, side, count))
   end
 end
 
-def left_after(call: Call, seq: Seq, front: Bool, taken: Int) -> Keyspace.Keyspace
-  rest = Lists.drop_back(seq, taken)
-  if front
-    rest = Lists.drop_front(seq, taken)
-  end
-
-  return Lists.store(call.keyspace, call.args[0], rest, call.now_ms)
+def left_after(call: Call, seq: Seq, side: End, taken: Int) -> Keyspace.Keyspace
+  return Lists.store(call.keyspace, call.args[0], Lists.drop(seq, side, taken), call.now_ms)
 end
 
 def smaller(a: Int, b: Int) -> Int

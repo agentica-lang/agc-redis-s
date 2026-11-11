@@ -66,7 +66,7 @@ tools/               check_purity.py and its tests (Python, standard library)
   - Functional tests by domain, in Agentica, in process, no socket:
     `test/functional/<domain>_test.agc` feeds request bytes to `exchange` and
     compares the reply bytes and the keyspace. Plain paths, error texts and
-    arity are tested here. The helper calls `commands/session.agc`, the same
+    arity are tested here. The helper calls `commands/runner.agc`, the same
     code as the store task; only its read loop mirrors the server's, and the
     smoke test is the check of the real loop.
   - Unit tests only where a pure function has real logic (RESP reader and
@@ -92,9 +92,10 @@ tools/               check_purity.py and its tests (Python, standard library)
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
-- Pull requests are small and iterative: at most 800 changed lines (added
-  plus removed, tests and docs counted). If a change would pass 800, split it
-  into PRs that each build, pass CI and stand on their own.
+- Pull requests are small and iterative: at most about 2,000 changed lines of
+  real code, tests and docs (added plus removed); regenerated or generated data
+  does not count. Split a larger change into PRs that each build, pass CI and
+  stand on their own; go over only when a change cannot be split.
 - Style: `agentica fmt`, `lint --strict`; imports sorted by path.
 
 ## Commands
@@ -154,7 +155,7 @@ the field or the folder when it needs it.
 - Touched keys: `WATCH` and the blocking commands need the keys a command
   changed. The keyspace tracks dirty keys, or `Outcome.touched` lists them.
 - Databases: `store/databases.agc` holds the 16 keyspaces. A handler sees the
-  selected one as `Call.keyspace` and returns its new one; `commands/session.agc`
+  selected one as `Call.keyspace` and returns its new one; `commands/runner.agc`
   puts it back (`write`). `Call.databases` is all 16 to read, and `write_all`
   returns all 16 (`FLUSHALL`; `MOVE`, `SWAPDB` and `COPY ... DB` later).
 - Blocking commands (`BLPOP`, ...): a "blocking allowed" input in `Call`,

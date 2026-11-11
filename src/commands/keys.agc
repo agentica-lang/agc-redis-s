@@ -21,7 +21,6 @@ STAR = 42
 struct Copying
   db: Int
   replace: Bool = false
-  refused: Optional[String] = none
 end
 
 export def commands() -> List[Command]
@@ -197,7 +196,7 @@ def move_to(call: Call, target: Int) -> Outcome
   end
 end
 
-def copy_options(call: Call) -> Copying
+def copy_options(call: Call) -> Result[Copying]
   found = Copying(db: call.session.db)
   i = 2
   while i < call.args.size
@@ -206,29 +205,30 @@ def copy_options(call: Call) -> Copying
       found = found.with(replace: true)
     elsif word == "db" and i + 1 < call.args.size
       case database_index(call.args[i + 1])
-        error(text) -> return found.with(refused: some(text))
+        error(text) -> return error(text)
         ok(index) -> found = found.with(db: index)
       end
 
       i += 1
     else
-      return found.with(refused: some(Errors.SYNTAX))
+      return error(Errors.SYNTAX)
     end
 
     i += 1
   end
 
-  return found
+  return ok(found)
 end
 
 # Values are immutable, so the copy shares the value. The deadline comes along.
 def copy(call: Call) -> Outcome
-  found = copy_options(call)
-  case found.refused
-    some(text) -> return fail(call, text)
-    none -> nil
+  case copy_options(call)
+    error(text) -> return fail(call, text)
+    ok(found) -> return copy_to(call, found)
   end
+end
 
+def copy_to(call: Call, found: Copying) -> Outcome
   key = call.args[0]
   if found.db == call.session.db and key == call.args[1]
     return fail(call, Errors.SAME_OBJECT)

@@ -1,12 +1,14 @@
 ## Helpers shared by the tests.
 
+import Engine from "../src/commands/engine"
+import Runner from "../src/commands/runner"
+import Writer from "../src/resp/writer"
 import {Call, Command, Outcome} from "../src/commands/command"
 import Dispatch from "../src/commands/dispatch"
-import Requests from "../src/commands/session"
 import {Ending} from "../src/resp/stream"
 import Stream from "../src/resp/stream"
 import Table from "../src/commands/table"
-import {Store} from "../src/commands/session"
+import {Store} from "../src/commands/engine"
 import {Databases, fresh} from "../src/store/databases"
 import {Session} from "../src/session/session"
 import {Keyspace} from "../src/store/keyspace"
@@ -27,14 +29,14 @@ export def request(words: List[Bytes]) -> Bytes
   return Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
 
-## The whole path without a socket: the stream reader, then `Requests.run`, the
+## The whole path without a socket: the stream reader, then `Runner.run`, the
 ## call the store task makes, for one client with the id 1. `closed` is set by a
 ## `Close` effect or a protocol error; what follows it is ignored.
 export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
-  store = Requests.join(Requests.start(databases), 1)
+  store = Engine.join(Engine.start(databases), 1)
   fed = Stream.feed(Stream.start(), bytes)
-  done = Requests.run_all(table, store, 1, fed.requests, now_ms)
+  done = Runner.run_all(table, store, 1, fed.requests, now_ms)
   replies = [done.reply]
   if done.close
     return finish(done.store, replies, true)
@@ -42,7 +44,7 @@ export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exch
 
   case fed.ending
     Ending.Open -> return finish(done.store, replies, false)
-    Ending.Invalid(text) -> return finish(done.store, replies.push(Requests.protocol_error_reply(text)), true)
+    Ending.Invalid(text) -> return finish(done.store, replies.push(Writer.protocol_error(text)), true)
     Ending.Overflow -> return finish(done.store, replies, true)
   end
 end
@@ -51,10 +53,10 @@ end
 ## built once, without the reader (which has its laws). Much cheaper than
 ## `exchange`, so a law can run more cases.
 export def run_requests(table: Map[String, Command], databases: Databases, argvs: List[List[Bytes]]) -> Exchange
-  store = Requests.join(Requests.start(databases), 1)
+  store = Engine.join(Engine.start(databases), 1)
   replies: List[Bytes] = []
   for argv in argvs
-    done = Requests.run(table, store, 1, argv, 0)
+    done = Runner.run(table, store, 1, argv, 0)
     store = done.store
     replies = replies.push(done.reply)
   end

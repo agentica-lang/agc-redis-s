@@ -7,8 +7,8 @@ import {Command} from "command"
 import Config from "config"
 import Connection from "connection"
 import Expire from "expire"
-import Counters from "hashes/counters"
-import Fields from "hashes/fields"
+import HashCounters from "hashes/counters"
+import HashFields from "hashes/fields"
 import HashListings from "hashes/listings"
 import HashRandom from "hashes/random"
 import HashScan from "hashes/scan"
@@ -34,9 +34,9 @@ export def build() -> Map[String, Command]
       .concat(Expire.commands())
       .concat(Keys.commands())
       .concat(Scan.commands())
-      .concat(Fields.commands())
+      .concat(HashFields.commands())
       .concat(HashListings.commands())
-      .concat(Counters.commands())
+      .concat(HashCounters.commands())
       .concat(HashRandom.commands())
       .concat(HashScan.commands())
       .concat(ListPush.commands())

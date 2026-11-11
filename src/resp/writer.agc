@@ -9,6 +9,11 @@ CRLF = "\r\n".bytes
 HEADER_COUNT = 1024
 HEADERS = (0...HEADER_COUNT).to_a.map do |size| "$#{size}\r\n".bytes end
 
+## The last bytes before a connection closes on a protocol error.
+export def protocol_error(text: String) -> Bytes
+  return "-ERR #{text}\r\n".bytes
+end
+
 export def encode(reply: Reply) -> Bytes
   return case reply
     Reply.Simple(text) -> line("+".bytes, text.bytes)

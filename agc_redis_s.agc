@@ -3,7 +3,7 @@
 ## builds them.
 
 import Dock from "pkg/dock/dock"
-import Requests from "src/commands/session"
+import Engine from "src/commands/engine"
 import Table from "src/commands/table"
 import Config from "src/server/config"
 import Connection from "src/server/connection"
@@ -27,7 +27,7 @@ end
 
 def start(config: Config.Config) -> Void
   inbox: Channel[Message] = Channel.new(INBOX_SIZE)
-  setup = StoreTask.Setup(inbox: inbox, store: Requests.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
+  setup = StoreTask.Setup(inbox: inbox, store: Engine.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
   store = Task.spawn(&StoreTask.run, setup)
   options = Dock.Config(port: config.port, host: config.bind, max_outbox_bytes: MAX_PENDING_BYTES)
   hooked = Dock.on_close(options) do |conn| Connection.gone(inbox, conn.id) end
