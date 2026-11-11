@@ -19,30 +19,26 @@ struct Options
   maxlen: Int
 end
 
-export def commands() -> List[Command]
-  return [Command(name: "lpos", arity: -3, handler: &lpos)]
-end
+export def commands() -> List[Command] = [Command(name: "lpos", arity: -3, handler: &lpos)]
 
 # The options are read first, left to right, and the first error wins; then a
 # missing key answers nil (an empty array with COUNT).
 def lpos(call: Call) -> Outcome
   case options_of(call.args.drop(2))
-    error(text) -> return fail(call, text)
+    error(text) -> fail(call, text)
     ok(options) ->
       case Lists.held(call.keyspace, call.args[0], call.now_ms)
-        Held.Missing -> return reply(call, nothing(options))
-        Held.Foreign -> return wrong_type(call)
-        Held.Items(seq) -> return reply(call, found(seq, call.args[1], options))
+        Held.Missing -> reply(call, nothing(options))
+        Held.Foreign -> wrong_type(call)
+        Held.Items(seq) -> reply(call, found(seq, call.args[1], options))
       end
   end
 end
 
 def nothing(options: Options) -> Reply
-  if options.count == NO_COUNT
-    return Reply.NilBulk
-  end
+  return Reply.NilBulk if options.count == NO_COUNT
 
-  return Reply.Array([])
+  Reply.Array([])
 end
 
 def options_of(words: List[Bytes]) -> Result[Options]
@@ -50,37 +46,29 @@ def options_of(words: List[Bytes]) -> Result[Options]
   i = 0
   while i < words.size
     name = Args.lower(words[i])
-    if i + 1 >= words.size or (name != "rank" and name != "count" and name != "maxlen")
-      return error(Errors.SYNTAX)
-    end
+    return error(Errors.SYNTAX) if i + 1 >= words.size or (name != "rank" and name != "count" and name != "maxlen")
 
     options = try with_option(options, name, words[i + 1])
     i += 2
   end
 
-  return ok(options)
+  ok(options)
 end
 
 def with_option(options: Options, name: String, text: Bytes) -> Result[Options]
-  if name == "rank"
-    return ok(options.with(rank: try rank_of(text)))
-  end
+  return ok(options.with(rank: try rank_of(text))) if name == "rank"
 
-  if name == "count"
-    return ok(options.with(count: try Args.positive(text, "ERR COUNT can't be negative")))
-  end
+  return ok(options.with(count: try Args.positive(text, "ERR COUNT can't be negative"))) if name == "count"
 
-  return ok(options.with(maxlen: try Args.positive(text, "ERR MAXLEN can't be negative")))
+  ok(options.with(maxlen: try Args.positive(text, "ERR MAXLEN can't be negative")))
 end
 
 # Between -(2^63 - 1) and 2^63 - 1, and not zero.
 def rank_of(text: Bytes) -> Result[Int]
   case Integer.parse(text)
-    none -> return error(Errors.NOT_INT)
+    none -> error(Errors.NOT_INT)
     some(rank) ->
-      if rank < 0 - Integer.INT_MAX
-        return error(Errors.LONG_RANGE)
-      end
+      return error(Errors.LONG_RANGE) if rank < 0 - Integer.INT_MAX
 
       if rank == 0
         return error(
@@ -88,7 +76,7 @@ def rank_of(text: Bytes) -> Result[Int]
         )
       end
 
-      return ok(rank)
+      ok(rank)
   end
 end
 
@@ -117,20 +105,14 @@ def found(seq: Seq, wanted: Bytes, options: Options) -> Reply
       matches += 1
       if matches >= skip
         hits = hits.push(Reply.Integer(index))
-        if options.count == NO_COUNT or (options.count != 0 and hits.size >= options.count)
-          break
-        end
+        break if options.count == NO_COUNT or (options.count != 0 and hits.size >= options.count)
       end
     end
   end
 
-  if options.count != NO_COUNT
-    return Reply.Array(hits)
-  end
+  return Reply.Array(hits) if options.count != NO_COUNT
 
-  if hits.empty?
-    return Reply.NilBulk
-  end
+  return Reply.NilBulk if hits.empty?
 
-  return hits[0]
+  hits[0]
 end

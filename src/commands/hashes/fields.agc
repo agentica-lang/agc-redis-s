@@ -9,7 +9,7 @@ import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "hset", arity: -4, handler: &hset),
     Command(name: "hmset", arity: -4, handler: &hmset),
     Command(name: "hsetnx", arity: 4, handler: &hsetnx),
@@ -22,26 +22,20 @@ export def commands() -> List[Command]
   ]
 end
 
-def hset(call: Call) -> Outcome
-  return set_pairs(call, false)
-end
+def hset(call: Call) -> Outcome = set_pairs(call, false)
 
 # HMSET is HSET that answers OK.
-def hmset(call: Call) -> Outcome
-  return set_pairs(call, true)
-end
+def hmset(call: Call) -> Outcome = set_pairs(call, true)
 
 # The fields and values come in pairs after the key; a lone field is an arity
 # error, checked before the key is looked at.
 def set_pairs(call: Call, quiet: Bool) -> Outcome
-  if call.args.size % 2 == 0
-    return wrong_arity(call)
-  end
+  return wrong_arity(call) if call.args.size % 2 == 0
 
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return put_pairs(call, {}, quiet)
-    Held.Fields(fields) -> return put_pairs(call, fields, quiet)
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> put_pairs(call, {}, quiet)
+    Held.Fields(fields) -> put_pairs(call, fields, quiet)
   end
 end
 
@@ -63,96 +57,89 @@ def put_pairs(call: Call, old: Map[Bytes, Bytes], quiet: Bool) -> Outcome
     answer = Reply.Simple("OK")
   end
 
-  return write(call, Hashes.store(call.keyspace, call.args[0], fields, call.now_ms), answer)
+  write(call, Hashes.store(call.keyspace, call.args[0], fields, call.now_ms), answer)
 end
 
 def hsetnx(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return put_field(call, {})
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> put_field(call, {})
     Held.Fields(fields) ->
-      if fields.has_key?(call.args[1])
-        return reply(call, Reply.Integer(0))
-      end
+      return reply(call, Reply.Integer(0)) if fields.has_key?(call.args[1])
 
-      return put_field(call, fields)
+      put_field(call, fields)
   end
 end
 
 def put_field(call: Call, fields: Map[Bytes, Bytes]) -> Outcome
   stored = Hashes.store(call.keyspace, call.args[0], fields.put(call.args[1], call.args[2]), call.now_ms)
-  return write(call, stored, Reply.Integer(1))
+  write(call, stored, Reply.Integer(1))
 end
 
 def hget(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.NilBulk)
-    Held.Fields(fields) -> return reply(call, field_or_nil(fields, call.args[1]))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.NilBulk)
+    Held.Fields(fields) -> reply(call, field_or_nil(fields, call.args[1]))
   end
 end
 
 # A missing key is an empty hash: one nil per field.
 def hmget(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Array(call.args.drop(1).map do |_| Reply.NilBulk end))
-    Held.Fields(fields) ->
-      return reply(call, Reply.Array(call.args.drop(1).map do |name| field_or_nil(fields, name) end))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Array(call.args.drop(1).map do |_| Reply.NilBulk end))
+    Held.Fields(fields) -> reply(call, Reply.Array(call.args.drop(1).map do |name| field_or_nil(fields, name) end))
   end
 end
 
 def field_or_nil(fields: Map[Bytes, Bytes], name: Bytes) -> Reply
   case fields.get(name)
-    none -> return Reply.NilBulk
-    some(value) -> return Reply.Bulk(value)
+    none -> Reply.NilBulk
+    some(value) -> Reply.Bulk(value)
   end
 end
 
 # A field named twice counts once; the key goes with its last field.
 def hdel(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
     Held.Fields(fields) ->
       kept = call.args.drop(1).reduce(fields) do |left, name| left.delete(name) end
       removed = fields.size - kept.size
-      if removed == 0
-        return reply(call, Reply.Integer(0))
-      end
+      return reply(call, Reply.Integer(0)) if removed == 0
 
-      return write(call, Hashes.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Integer(removed))
+      write(call, Hashes.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Integer(removed))
   end
 end
 
 def hlen(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Fields(fields) -> return reply(call, Reply.Integer(fields.size))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Fields(fields) -> reply(call, Reply.Integer(fields.size))
   end
 end
 
 def hexists(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Fields(fields) -> return reply(call, Reply.Integer(count_of(fields.has_key?(call.args[1]))))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Fields(fields) -> reply(call, Reply.Integer(count_of(fields.has_key?(call.args[1]))))
   end
 end
 
 def hstrlen(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Fields(fields) -> return reply(call, Reply.Integer(fields.get(call.args[1]).unwrap_or("".bytes).size))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Fields(fields) -> reply(call, Reply.Integer(fields.get(call.args[1]).unwrap_or("".bytes).size))
   end
 end
 
 def count_of(found: Bool) -> Int
-  if found
-    return 1
-  end
+  return 1 if found
 
-  return 0
+  0
 end

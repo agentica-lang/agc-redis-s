@@ -11,7 +11,7 @@ import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "lset", arity: 4, handler: &lset),
     Command(name: "ltrim", arity: 4, handler: &ltrim),
     Command(name: "linsert", arity: 5, handler: &linsert),
@@ -22,12 +22,12 @@ end
 # The key is looked up first, then the type, then the index is read.
 def lset(call: Call) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return fail(call, Errors.NO_SUCH_KEY)
-    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> fail(call, Errors.NO_SUCH_KEY)
+    Held.Foreign -> wrong_type(call)
     Held.Items(seq) ->
       case Integer.parse(call.args[1])
-        none -> return fail(call, Errors.NOT_INT)
-        some(index) -> return set_at(call, seq, index)
+        none -> fail(call, Errors.NOT_INT)
+        some(index) -> set_at(call, seq, index)
       end
   end
 end
@@ -38,26 +38,24 @@ def set_at(call: Call, seq: Seq, index: Int) -> Outcome
     position = Lists.length(seq) + position
   end
 
-  if Lists.get(seq, position).none?
-    return fail(call, "ERR index out of range")
-  end
+  return fail(call, "ERR index out of range") if Lists.get(seq, position).none?
 
   changed = Lists.set(seq, position, call.args[2])
-  return write(call, Lists.store(call.keyspace, call.args[0], changed, call.now_ms), Reply.Simple("OK"))
+  write(call, Lists.store(call.keyspace, call.args[0], changed, call.now_ms), Reply.Simple("OK"))
 end
 
 # Both numbers first; a missing key answers OK.
 def ltrim(call: Call) -> Outcome
   case Integer.parse(call.args[1])
-    none -> return fail(call, Errors.NOT_INT)
+    none -> fail(call, Errors.NOT_INT)
     some(start) ->
       case Integer.parse(call.args[2])
-        none -> return fail(call, Errors.NOT_INT)
+        none -> fail(call, Errors.NOT_INT)
         some(stop) ->
           case Lists.held(call.keyspace, call.args[0], call.now_ms)
-            Held.Missing -> return reply(call, Reply.Simple("OK"))
-            Held.Foreign -> return wrong_type(call)
-            Held.Items(seq) -> return trimmed(call, seq, start, stop)
+            Held.Missing -> reply(call, Reply.Simple("OK"))
+            Held.Foreign -> wrong_type(call)
+            Held.Items(seq) -> trimmed(call, seq, start, stop)
           end
       end
   end
@@ -71,21 +69,19 @@ def trimmed(call: Call, seq: Seq, start: Int, stop: Int) -> Outcome
     some(span) -> kept = Lists.drop_back(Lists.drop_front(seq, span.first), size - 1 - span.last)
   end
 
-  return write(call, Lists.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Simple("OK"))
+  write(call, Lists.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Simple("OK"))
 end
 
 # AFTER or BEFORE is checked before the key; the pivot is the first element
 # from the head that equals the given one, and none answers -1.
 def linsert(call: Call) -> Outcome
   where = Args.lower(call.args[1])
-  if where != "after" and where != "before"
-    return fail(call, Errors.SYNTAX)
-  end
+  return fail(call, Errors.SYNTAX) if where != "after" and where != "before"
 
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Foreign -> return wrong_type(call)
-    Held.Items(seq) -> return inserted(call, Lists.to_list(seq), where == "after")
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Foreign -> wrong_type(call)
+    Held.Items(seq) -> inserted(call, Lists.to_list(seq), where == "after")
   end
 end
 
@@ -97,9 +93,7 @@ def inserted(call: Call, elements: List[Bytes], after: Bool) -> Outcome
     end
   end
 
-  if at < 0
-    return reply(call, Reply.Integer(-1))
-  end
+  return reply(call, Reply.Integer(-1)) if at < 0
 
   cut = at
   if after
@@ -108,7 +102,7 @@ def inserted(call: Call, elements: List[Bytes], after: Bool) -> Outcome
 
   grown = elements.take(cut).push(call.args[3]).concat(elements.drop(cut))
   stored = Lists.store(call.keyspace, call.args[0], Lists.from_list(grown), call.now_ms)
-  return write(call, stored, Reply.Integer(grown.size))
+  write(call, stored, Reply.Integer(grown.size))
 end
 
 # The count is read before the key. A positive count removes from the head, a
@@ -116,12 +110,12 @@ end
 # smallest Int wraps and removes all from the tail.
 def lrem(call: Call) -> Outcome
   case Integer.parse(call.args[1])
-    none -> return fail(call, Errors.NOT_INT)
+    none -> fail(call, Errors.NOT_INT)
     some(count) ->
       case Lists.held(call.keyspace, call.args[0], call.now_ms)
-        Held.Missing -> return reply(call, Reply.Integer(0))
-        Held.Foreign -> return wrong_type(call)
-        Held.Items(seq) -> return removed(call, Lists.to_list(seq), count)
+        Held.Missing -> reply(call, Reply.Integer(0))
+        Held.Foreign -> wrong_type(call)
+        Held.Items(seq) -> removed(call, Lists.to_list(seq), count)
       end
   end
 end
@@ -156,5 +150,5 @@ def removed(call: Call, elements: List[Bytes], count: Int) -> Outcome
   end
 
   stored = Lists.store(call.keyspace, call.args[0], Lists.from_list(kept), call.now_ms)
-  return write(call, stored, Reply.Integer(gone))
+  write(call, stored, Reply.Integer(gone))
 end

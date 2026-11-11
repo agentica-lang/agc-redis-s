@@ -9,7 +9,7 @@ def filled() -> Databases
   base = put(first, "b".bytes, Value.Str("2".bytes), 0)
   other = put(Keyspace(), "c".bytes, Value.Str("3".bytes), 0)
   zero = with_space(fresh(), 0, base)
-  return with_space(zero, 3, other)
+  with_space(zero, 3, other)
 end
 
 # DBSIZE counts the selected database; TIME gives seconds and microseconds of
@@ -36,12 +36,10 @@ def test_dbsize_time_and_flushall() -> Result[Void]
 
   try Test.eq(result.reply, expected.bytes)
   try Test.eq(space_at(result.databases, 0), Keyspace())
-  return Test.eq(space_at(result.databases, 3), Keyspace())
+  Test.eq(space_at(result.databases, 3), Keyspace())
 end
 
-def bulk(text: String) -> Bytes
-  return "$#{text.bytesize}\r\n#{text}\r\n".bytes
-end
+def bulk(text: String) -> Bytes = "$#{text.bytesize}\r\n#{text}\r\n".bytes
 
 # INFO: no name, `default` or `everything` is every section; a name picks one,
 # in any case; an unknown name gives nothing; only databases with keys are listed.
@@ -54,7 +52,7 @@ def test_info() -> Result[Void]
   try Test.eq(exchange(filled(), words(["INFO"])).reply, all)
   try Test.eq(exchange(filled(), words(["INFO", "x", "everything"])).reply, all)
   try Test.eq(exchange(filled(), words(["info", "KEYSPACE"])).reply, bulk(keyspace))
-  return Test.eq(exchange(filled(), words(["INFO", "nothing"])).reply, bulk(""))
+  Test.eq(exchange(filled(), words(["INFO", "nothing"])).reply, bulk(""))
 end
 
 # CONFIG GET: the settings redis-benchmark reads, an exact name echoed as
@@ -84,7 +82,7 @@ def test_config_get() -> Result[Void]
     "-ERR wrong number of arguments for 'config|set' command\r\n",
   ].join("")
 
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end
 
 # COMMAND DOCS is an empty map (what redis-cli reads at start), COUNT counts
@@ -95,7 +93,7 @@ def test_command() -> Result[Void]
   listed = talk([["COMMAND"]]).reply
   quit_entry = "*10\r\n$4\r\nquit\r\n:-1\r\n*0\r\n:0\r\n:0\r\n:0\r\n*0\r\n*0\r\n*0\r\n*0\r\n"
   try Test.assert(listed.take(6) == "*105\r\n".bytes, "one entry per command")
-  return Test.assert(listed.size >= quit_entry.bytesize * 24, "ten items each")
+  Test.assert(listed.size >= quit_entry.bytesize * 24, "ten items each")
 end
 
 # FLUSHDB empties the selected database only, and checks its option as FLUSHALL.
@@ -110,5 +108,5 @@ def test_flushdb_empties_the_selected_database() -> Result[Void]
 
   result = exchange(filled(), Bytes.concat(sent), 0)
   try Test.eq(result.reply, "-ERR syntax error\r\n+OK\r\n:0\r\n+OK\r\n:1\r\n".bytes)
-  return Test.eq(space_at(result.databases, 0), Keyspace())
+  Test.eq(space_at(result.databases, 0), Keyspace())
 end

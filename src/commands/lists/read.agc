@@ -10,7 +10,7 @@ import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "llen", arity: 2, handler: &llen),
     Command(name: "lindex", arity: 3, handler: &lindex),
     Command(name: "lrange", arity: 4, handler: &lrange),
@@ -19,9 +19,9 @@ end
 
 def llen(call: Call) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Items(seq) -> return reply(call, Reply.Integer(Lists.length(seq)))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Items(seq) -> reply(call, Reply.Integer(Lists.length(seq)))
   end
 end
 
@@ -30,12 +30,12 @@ end
 # index counts from the tail.
 def lindex(call: Call) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return reply(call, Reply.NilBulk)
-    Held.Foreign -> return wrong_type(call)
+    Held.Missing -> reply(call, Reply.NilBulk)
+    Held.Foreign -> wrong_type(call)
     Held.Items(seq) ->
       case Integer.parse(call.args[1])
-        none -> return fail(call, Errors.NOT_INT)
-        some(index) -> return reply(call, element_or_nil(seq, index))
+        none -> fail(call, Errors.NOT_INT)
+        some(index) -> reply(call, element_or_nil(seq, index))
       end
   end
 end
@@ -47,8 +47,8 @@ def element_or_nil(seq: Seq, index: Int) -> Reply
   end
 
   case Lists.get(seq, position)
-    none -> return Reply.NilBulk
-    some(element) -> return Reply.Bulk(element)
+    none -> Reply.NilBulk
+    some(element) -> Reply.Bulk(element)
   end
 end
 
@@ -56,15 +56,15 @@ end
 # then the type is checked.
 def lrange(call: Call) -> Outcome
   case Integer.parse(call.args[1])
-    none -> return fail(call, Errors.NOT_INT)
+    none -> fail(call, Errors.NOT_INT)
     some(start) ->
       case Integer.parse(call.args[2])
-        none -> return fail(call, Errors.NOT_INT)
+        none -> fail(call, Errors.NOT_INT)
         some(stop) ->
           case Lists.held(call.keyspace, call.args[0], call.now_ms)
-            Held.Missing -> return reply(call, Reply.Array([]))
-            Held.Foreign -> return wrong_type(call)
-            Held.Items(seq) -> return reply(call, range_reply(seq, start, stop))
+            Held.Missing -> reply(call, Reply.Array([]))
+            Held.Foreign -> wrong_type(call)
+            Held.Items(seq) -> reply(call, range_reply(seq, start, stop))
           end
       end
   end
@@ -72,7 +72,7 @@ end
 
 def range_reply(seq: Seq, start: Int, stop: Int) -> Reply
   case Lists.span_of(Lists.length(seq), start, stop)
-    none -> return Reply.Array([])
-    some(span) -> return Replies.range(seq, span, false)
+    none -> Reply.Array([])
+    some(span) -> Replies.range(seq, span, false)
   end
 end

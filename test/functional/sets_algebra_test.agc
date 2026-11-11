@@ -11,18 +11,14 @@ WRONGTYPE = "-WRONGTYPE Operation against a key holding the wrong kind of value"
 NOT_INT = "-ERR value is not an integer or out of range"
 SYNTAX = "-ERR syntax error"
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
-def joined(lines: List[String]) -> String
-  return "#{lines.join("\r\n")}\r\n"
-end
+def joined(lines: List[String]) -> String = "#{lines.join("\r\n")}\r\n"
 
 # The members a reply lists, sorted: the lines that are no length marker.
 def names_in(reply: String) -> List[String]
   lines = reply.split("\r\n").select do |line| line != "" and not ["$", "*", ":"].include?(line.slice(0, 1).to_s) end
-  return lines.sort
+  lines.sort
 end
 
 # A missing source is 0 even when the destination holds a string; then the
@@ -59,7 +55,7 @@ def test_smove() -> Result[Void]
   later = exchange(first.databases, words(["SMOVE", "s", "d", "a"]), 50)
   try Test.eq(exchange(later.databases, words(["PTTL", "s"]), 60).reply, ":40\r\n".bytes)
   more = exchange(later.databases, words(["SMOVE", "s", "n", "b"]), 60)
-  return Test.eq(
+  Test.eq(
     exchange(
       more.databases,
       Bytes.concat([words(["PTTL", "d"]), words(["TTL", "n"]), words(["EXISTS", "s"])]),
@@ -73,17 +69,15 @@ end
 # array is its member names sorted, anything else is the reply line.
 def look(table: Map[String, Command], databases: Databases.Databases, request: List[String]) -> String
   reply = run_requests(table, databases, [request.map do |word| word.bytes end]).reply.decode("latin-1").unwrap!
-  if reply.starts_with?("*")
-    return "[#{names_in(reply).join(",")}]"
-  end
+  return "[#{names_in(reply).join(",")}]" if reply.starts_with?("*")
 
-  return reply.trim
+  reply.trim
 end
 
 def looks(setup: List[List[String]], requests: List[List[String]]) -> List[String]
   databases = talk(setup).databases
   table = Table.build()
-  return requests.map do |request| look(table, databases, request) end
+  requests.map do |request| look(table, databases, request) end
 end
 
 # The three readers: a missing key is an empty set; any key of another type is
@@ -116,7 +110,7 @@ def test_union_inter_diff() -> Result[Void]
     "-ERR wrong number of arguments for 'sunion' command",
   ]
 
-  return Test.eq(got, want)
+  Test.eq(got, want)
 end
 
 # A STORE form replaces whatever the destination held, string and deadline
@@ -163,7 +157,7 @@ def test_the_store_forms() -> Result[Void]
 
   stored = exchange(first.databases, words(["SUNIONSTORE", "d", "a"]), 10)
   empty = exchange(stored.databases, words(["SINTERSTORE", "e", "a", "none"]), 20)
-  return Test.eq(
+  Test.eq(
     exchange(empty.databases, Bytes.concat([words(["TTL", "d"]), words(["EXISTS", "e"])]), 30).reply,
     ":-1\r\n:0\r\n".bytes,
   )
@@ -208,7 +202,7 @@ def test_sintercard() -> Result[Void]
     "-ERR LIMIT can't be negative", SYNTAX, SYNTAX, SYNTAX, "-ERR wrong number of arguments for 'sintercard' command",
   ]
 
-  return Test.eq(got, want)
+  Test.eq(got, want)
 end
 
 # A single SPOP or SRANDMEMBER draw depends on the call: twenty sets of the same
@@ -220,40 +214,34 @@ def test_a_single_draw_varies() -> Result[Void]
   popped = ask(setup.concat(keys.map do |key| ["SPOP", key] end))
   seen = ask(setup.concat(keys.map do |key| ["SRANDMEMBER", key] end))
   try Test.assert(names_in(popped).uniq.size > 1, "SPOP gave one member twenty times")
-  return Test.assert(names_in(seen).uniq.size > 1, "SRANDMEMBER gave one member twenty times")
+  Test.assert(names_in(seen).uniq.size > 1, "SRANDMEMBER gave one member twenty times")
 end
 
 def capped(size: Int, limit: Int) -> Int
-  if size < limit
-    return size
-  end
+  return size if size < limit
 
-  return limit
+  limit
 end
 
-def shown(numbers: List[Int]) -> String
-  return "[#{numbers.uniq.sort.map do |n| "m#{n}" end.join(",")}]"
-end
+def shown(numbers: List[Int]) -> String = "[#{numbers.uniq.sort.map do |n| "m#{n}" end.join(",")}]"
 
 def minus(first: List[Int], others: List[List[Int]]) -> List[Int]
-  return first.select do |n| not others.any? do |other| other.include?(n) end end
+  first.select do |n| not others.any? do |other| other.include?(n) end end
 end
 
 def common(first: List[Int], others: List[List[Int]]) -> List[Int]
-  return first.select do |n| others.all? do |other| other.include?(n) end end
+  first.select do |n| others.all? do |other| other.include?(n) end end
 end
 
 def adds(index: Int, numbers: List[Int]) -> List[List[String]]
-  if numbers.empty?
-    return []
-  end
+  return [] if numbers.empty?
 
-  return [["SADD", "s#{index}"].concat(numbers.map do |n| "m#{n}" end)]
+  [["SADD", "s#{index}"].concat(numbers.map do |n| "m#{n}" end)]
 end
 
 def stored_and_read(table: Map[String, Command], databases: Databases.Databases, name: String) -> List[String]
   after = run_requests(table, databases, [[name, "d", "s0", "s1", "s2"].map do |word| word.bytes end])
-  return [
+  [
     after.reply.decode("latin-1").unwrap!.trim,
     look(table, after.databases, ["SMEMBERS", "d"]),
     look(table, after.databases, ["EXISTS", "d"]),
@@ -268,7 +256,7 @@ def test_the_algebra_follows_a_model() -> Result[Void]
   table = Table.build()
   pieces = Prop.list(Prop.int(0, 7), 6)
   gen = Prop.list(pieces, 3)
-  return Prop.check(gen, Prop.Config(runs: 200)) do |generated|
+  Prop.check(gen, Prop.Config(runs: 200)) do |generated|
     lists = generated.concat([[], [], []]).take(3)
     setup = [["SET", "d", "x"]].concat(adds(0, lists[0])).concat(adds(1, lists[1])).concat(adds(2, lists[2]))
     databases = talk(setup).databases

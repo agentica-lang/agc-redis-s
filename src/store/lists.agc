@@ -35,11 +35,11 @@ end
 
 export def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
   case Keyspace.get(keyspace, key, now_ms)
-    none -> return Held.Missing
+    none -> Held.Missing
     some(value) ->
       case value
-        Value.Deque(items, head) -> return Held.Items(Seq(items: items, head: head))
-        _ -> return Held.Foreign
+        Value.Deque(items, head) -> Held.Items(Seq(items: items, head: head))
+        _ -> Held.Foreign
       end
   end
 end
@@ -47,50 +47,40 @@ end
 ## The keyspace with `seq` at the key. A live key keeps its deadline (the write
 ## changes the old value); an empty list removes the key.
 export def store(keyspace: Keyspace.Keyspace, key: Bytes, seq: Seq, now_ms: Int) -> Keyspace.Keyspace
-  if seq.items.empty?
-    return Keyspace.delete(keyspace, key)
-  end
+  return Keyspace.delete(keyspace, key) if seq.items.empty?
 
-  return Keyspace.put(keyspace, key, Value.Deque(seq.items, seq.head), now_ms)
+  Keyspace.put(keyspace, key, Value.Deque(seq.items, seq.head), now_ms)
 end
 
-export def empty() -> Seq
-  return Seq(items: {}, head: 0)
-end
+export def empty() -> Seq = Seq(items: {}, head: 0)
 
-export def length(seq: Seq) -> Int
-  return seq.items.size
-end
+export def length(seq: Seq) -> Int = seq.items.size
 
 ## The element at index `index`, 0 for the head; none outside the list.
 export def get(seq: Seq, index: Int) -> Optional[Bytes]
-  if index < 0 or index >= length(seq)
-    return none
-  end
+  return none if index < 0 or index >= length(seq)
 
-  return seq.items.get(seq.head + index)
+  seq.items.get(seq.head + index)
 end
 
 ## The element at an index inside the list, one lookup with no `Optional`.
-export def element(seq: Seq, index: Int) -> Bytes
-  return seq.items.get(seq.head + index, "".bytes)
-end
+export def element(seq: Seq, index: Int) -> Bytes = seq.items.get(seq.head + index, "".bytes)
 
 ## The list with `element` before its first one (LPUSH of one element).
 export def push_front(seq: Seq, element: Bytes) -> Seq
-  return Seq(items: seq.items.put(seq.head - 1, element), head: seq.head - 1)
+  Seq(items: seq.items.put(seq.head - 1, element), head: seq.head - 1)
 end
 
 ## The list with `element` after its last one (RPUSH of one element).
 export def push_back(seq: Seq, element: Bytes) -> Seq
-  return Seq(items: seq.items.put(seq.head + length(seq), element), head: seq.head)
+  Seq(items: seq.items.put(seq.head + length(seq), element), head: seq.head)
 end
 
 ## The list with `element` at `side`.
 export def push(seq: Seq, element: Bytes, side: End) -> Seq
   case side
-    End.Head -> return push_front(seq, element)
-    End.Tail -> return push_back(seq, element)
+    End.Head -> push_front(seq, element)
+    End.Tail -> push_back(seq, element)
   end
 end
 
@@ -102,14 +92,14 @@ export def edge(seq: Seq, side: End) -> Bytes
     End.Tail -> index = length(seq) - 1
   end
 
-  return element(seq, index)
+  element(seq, index)
 end
 
 ## The list without its `count` elements at `side` (at most the length).
 export def drop(seq: Seq, side: End, count: Int) -> Seq
   case side
-    End.Head -> return drop_front(seq, count)
-    End.Tail -> return drop_back(seq, count)
+    End.Head -> drop_front(seq, count)
+    End.Tail -> drop_back(seq, count)
   end
 end
 
@@ -121,7 +111,7 @@ export def drop_front(seq: Seq, count: Int) -> Seq
     items = items.delete(seq.head + offset)
   end
 
-  return Seq(items: items, head: seq.head + count)
+  Seq(items: items, head: seq.head + count)
 end
 
 ## The list without its last `count` elements (at most the length).
@@ -132,12 +122,12 @@ export def drop_back(seq: Seq, count: Int) -> Seq
     items = items.delete(last - offset)
   end
 
-  return Seq(items: items, head: seq.head)
+  Seq(items: items, head: seq.head)
 end
 
 ## The list with the element at `index` (inside the list) replaced.
 export def set(seq: Seq, index: Int, element: Bytes) -> Seq
-  return Seq(items: seq.items.put(seq.head + index, element), head: seq.head)
+  Seq(items: seq.items.put(seq.head + index, element), head: seq.head)
 end
 
 ## All the elements in order: O(n), for the commands that rebuild the list
@@ -148,7 +138,7 @@ export def to_list(seq: Seq) -> List[Bytes]
     picked = picked.push(seq.items.get(seq.head + offset, "".bytes))
   end
 
-  return picked
+  picked
 end
 
 export def from_list(elements: List[Bytes]) -> Seq
@@ -157,7 +147,7 @@ export def from_list(elements: List[Bytes]) -> Seq
     items = items.put(index, elements[index])
   end
 
-  return Seq(items: items, head: 0)
+  Seq(items: items, head: 0)
 end
 
 ## The range `start` to `stop` of a list of `size` elements as Redis reads it
@@ -179,13 +169,11 @@ export def span_of(size: Int, start: Int, stop: Int) -> Optional[Span]
     first = 0
   end
 
-  if first > last or first >= size
-    return none
-  end
+  return none if first > last or first >= size
 
   if last >= size
     last = size - 1
   end
 
-  return some(Span(first: first, last: last))
+  some(Span(first: first, last: last))
 end

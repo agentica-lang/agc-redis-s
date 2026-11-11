@@ -15,7 +15,7 @@ enum Create
 end
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "lpush", arity: -3, handler: &lpush),
     Command(name: "rpush", arity: -3, handler: &rpush),
     Command(name: "lpushx", arity: -3, handler: &lpushx),
@@ -23,32 +23,24 @@ export def commands() -> List[Command]
   ]
 end
 
-def lpush(call: Call) -> Outcome
-  return push(call, End.Head, Create.Yes)
-end
+def lpush(call: Call) -> Outcome = push(call, End.Head, Create.Yes)
 
-def rpush(call: Call) -> Outcome
-  return push(call, End.Tail, Create.Yes)
-end
+def rpush(call: Call) -> Outcome = push(call, End.Tail, Create.Yes)
 
-def lpushx(call: Call) -> Outcome
-  return push(call, End.Head, Create.No)
-end
+def lpushx(call: Call) -> Outcome = push(call, End.Head, Create.No)
 
-def rpushx(call: Call) -> Outcome
-  return push(call, End.Tail, Create.No)
-end
+def rpushx(call: Call) -> Outcome = push(call, End.Tail, Create.No)
 
 def push(call: Call, side: End, create: Create) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
+    Held.Foreign -> wrong_type(call)
     Held.Missing ->
       case create
-        Create.No -> return reply(call, Reply.Integer(0))
-        Create.Yes -> return pushed(call, Lists.empty(), side)
+        Create.No -> reply(call, Reply.Integer(0))
+        Create.Yes -> pushed(call, Lists.empty(), side)
       end
 
-    Held.Items(seq) -> return pushed(call, seq, side)
+    Held.Items(seq) -> pushed(call, seq, side)
   end
 end
 
@@ -56,5 +48,5 @@ end
 def pushed(call: Call, old: Seq, side: End) -> Outcome
   seq = call.args.drop(1).reduce(old) do |left, element| Lists.push(left, element, side) end
   stored = Lists.store(call.keyspace, call.args[0], seq, call.now_ms)
-  return write(call, stored, Reply.Integer(Lists.length(seq)))
+  write(call, stored, Reply.Integer(Lists.length(seq)))
 end

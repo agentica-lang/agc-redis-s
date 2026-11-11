@@ -11,32 +11,24 @@ struct Model
   replies: List[Bytes]
 end
 
-def bulk(data: List[Int]) -> Bytes
-  return Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
-end
+def bulk(data: List[Int]) -> Bytes = Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
 
 def maybe(data: Optional[List[Int]]) -> Bytes
   case data
-    none -> return "$-1\r\n".bytes
-    some(xs) -> return bulk(xs)
+    none -> "$-1\r\n".bytes
+    some(xs) -> bulk(xs)
   end
 end
 
-def whole(n: Int) -> Bytes
-  return ":#{n}\r\n".bytes
-end
+def whole(n: Int) -> Bytes = ":#{n}\r\n".bytes
 
-def name(key: Int) -> Bytes
-  return "k#{key}".bytes
-end
+def name(key: Int) -> Bytes = "k#{key}".bytes
 
 # Part of GETRANGE that is not its code: the indexes as Redis defines them,
 # written as a filter over positions.
 def slice_of(data: List[Int], start: Int, stop: Int) -> List[Int]
   size = data.size
-  if start < 0 and stop < 0 and start > stop
-    return []
-  end
+  return [] if start < 0 and stop < 0 and start > stop
 
   first = start
   last = stop
@@ -58,7 +50,7 @@ def slice_of(data: List[Int], start: Int, stop: Int) -> List[Int]
     hi = 0
   end
 
-  return (0...size).to_a.select do |i| i >= lo and i <= hi end.map do |i| data[i] end
+  (0...size).to_a.select do |i| i >= lo and i <= hi end.map do |i| data[i] end
 end
 
 def written(old: List[Int], offset: Int, value: List[Int]) -> List[Int]
@@ -67,7 +59,7 @@ def written(old: List[Int], offset: Int, value: List[Int]) -> List[Int]
     padded = old.concat((1..(offset - old.size)).to_a.map do |_| 0 end)
   end
 
-  return padded.take(offset).concat(value).concat(padded.drop(offset + value.size))
+  padded.take(offset).concat(value).concat(padded.drop(offset + value.size))
 end
 
 # One operation as a list of numbers: kind, key, two small numbers, then the
@@ -75,7 +67,7 @@ end
 # The options of SET for the six flavors: none, NX, XX, GET, NX GET, XX GET.
 def set_options(n: Int) -> List[Bytes]
   flavors: List[List[String]] = [[], ["NX"], ["XX"], ["GET"], ["nx", "get"], ["XX", "GET"]]
-  return flavors[n % 6].map do |w| w.bytes end
+  flavors[n % 6].map do |w| w.bytes end
 end
 
 def argv_of(kinds: List[Int], op: List[Int]) -> List[Bytes]
@@ -151,7 +143,7 @@ def model_step(kinds: List[Int], model: Model, op: List[Int]) -> Model
     _ -> answer = bulk(slice_of(old.unwrap_or([]), n - 4, m - 4))
   end
 
-  return Model(state: state, replies: model.replies.push(answer))
+  Model(state: state, replies: model.replies.push(answer))
 end
 
 # Under a run of up to 14 operations from `kinds` the server answers as the
@@ -161,7 +153,7 @@ def follows_the_model(kinds: List[Int], runs: Int) -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 8), 14)
-  return Prop.check(ops, Prop.Config(runs: runs)) do |list|
+  Prop.check(ops, Prop.Config(runs: runs)) do |list|
     argvs = list.map do |op| argv_of(kinds, op) end
     start = Model(state: {}, replies: [])
     model = list.reduce(start) do |acc, op| model_step(kinds, acc, op) end
@@ -176,29 +168,25 @@ end
 # SET (with its six flavors of NX, XX and GET), GET, APPEND, GETDEL, SETNX,
 # GETSET and STRLEN against a Map. 100 runs: the step limit is between 400 and
 # 800 runs for this law, so a third of the lower.
-def test_whole_value_commands_follow_a_map() -> Result[Void]
-  return follows_the_model([0, 1, 2, 3, 4, 5, 7], 100)
-end
+def test_whole_value_commands_follow_a_map() -> Result[Void] = follows_the_model([0, 1, 2, 3, 4, 5, 7], 100)
 
 # SETRANGE and GETRANGE, with SET, GET, STRLEN and APPEND (which leaves pieces
 # for them to join) around them, against a Map. 65 runs: the limit is between 200 and 300.
-def test_range_commands_follow_a_map() -> Result[Void]
-  return follows_the_model([0, 6, 8, 1, 7, 6, 8, 2], 65)
-end
+def test_range_commands_follow_a_map() -> Result[Void] = follows_the_model([0, 6, 8, 1, 7, 6, 8, 2], 65)
 
 # What the server holds at key number `k`, as the model's list of numbers.
 def left_in(databases: Databases, k: Int) -> Optional[List[Int]]
   case Keyspace.get(space_at(databases, 0), name(k), 0)
-    none -> return none
-    some(value) -> return some(joined_text(value).to_a)
+    none -> none
+    some(value) -> some(joined_text(value).to_a)
   end
 end
 
 # True when key `k` of the first database holds pieces not yet joined.
 def pending_at(databases: Databases, k: Int) -> Bool
   case Keyspace.get(space_at(databases, 0), name(k), 0)
-    none -> return false
-    some(value) -> return pending?(value)
+    none -> false
+    some(value) -> pending?(value)
   end
 end
 
@@ -235,14 +223,14 @@ def test_commands_and_their_texts() -> Result[Void]
     "-ERR value is not an integer or out of range\r\n",
   ].join("")
 
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end
 
 # The databases after one request that reads key `k0`, which holds the pieces
 # "ab", "cd" and "ef", and the reply.
 def read_pieces(request: List[String]) -> Exchange
   start = talk([["APPEND", "k0", "ab"], ["APPEND", "k0", "cd"], ["APPEND", "k0", "ef"], ["APPEND", "k0", ""]])
-  return exchange(start.databases, words(request))
+  exchange(start.databases, words(request))
 end
 
 # APPEND keeps the pieces and the size (STRLEN is right at once, an empty
@@ -280,5 +268,5 @@ def test_append_keeps_pieces_and_a_read_joins_them_once() -> Result[Void]
 
   ranged = read_pieces(["GETRANGE", "k0", "1", "4"])
   try Test.eq(ranged.reply, "$4\r\nbcde\r\n".bytes)
-  return Test.eq(pending_at(ranged.databases, 0), false)
+  Test.eq(pending_at(ranged.databases, 0), false)
 end

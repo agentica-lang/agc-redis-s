@@ -33,7 +33,7 @@ end
 
 ## `run`, and the store it ends with.
 export def serve(setup: Setup) -> Store
-  return take_all(setup.inbox, setup.now_ms, State(store: setup.store, table: setup.table)).store
+  take_all(setup.inbox, setup.now_ms, State(store: setup.store, table: setup.table)).store
 end
 
 def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State
@@ -45,13 +45,11 @@ def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State
         state = drained(inbox, handle(swept(state, now), message, now), now)
       error(_) ->
         state = swept(state, clock.call())
-        if inbox.closed? and inbox.empty?
-          break
-        end
+        break if inbox.closed? and inbox.empty?
     end
   end
 
-  return state
+  state
 end
 
 # The messages that already wait in the inbox run with the same clock reading
@@ -69,25 +67,23 @@ def drained(inbox: Channel[Message], first: State, now: Int) -> State
     taken += 1
   end
 
-  return state
+  state
 end
 
 # The active expiry runs between messages, at most every `SWEEP_MS`, also under
 # a load that never lets the receive time out.
 def swept(state: State, now: Int) -> State
-  if not Engine.sweep_due?(state.swept_at, now)
-    return state
-  end
+  return state if not Engine.sweep_due?(state.swept_at, now)
 
-  return state.with(store: Engine.expire_keys(state.store, now), swept_at: now)
+  state.with(store: Engine.expire_keys(state.store, now), swept_at: now)
 end
 
 def handle(state: State, message: Message, now: Int) -> State
   case message
-    Message.Open(conn) -> return state.with(store: Engine.join(state.store, conn.id))
-    Message.Exec(conn, requests) -> return exec(state, conn, requests, now)
-    Message.Close(conn, farewell) -> return hang_up(state, conn, farewell)
-    Message.Gone(id) -> return state.with(store: Engine.leave(state.store, id))
+    Message.Open(conn) -> state.with(store: Engine.join(state.store, conn.id))
+    Message.Exec(conn, requests) -> exec(state, conn, requests, now)
+    Message.Close(conn, farewell) -> hang_up(state, conn, farewell)
+    Message.Gone(id) -> state.with(store: Engine.leave(state.store, id))
   end
 end
 
@@ -97,11 +93,9 @@ def exec(state: State, conn: Dock.Conn, requests: List[List[Bytes]], now: Int) -
   done = Runner.run_all(state.table, state.store, conn.id, requests, now)
   send(conn, done.reply)
   next_state = state.with(store: done.store)
-  if done.close
-    return close(next_state, conn, "".bytes)
-  end
+  return close(next_state, conn, "".bytes) if done.close
 
-  return next_state
+  next_state
 end
 
 # `Dock.send` never waits for the client. It fails once the client is gone or
@@ -115,11 +109,9 @@ end
 # A client that quit already has no session and its connection is closed: the
 # close that its handler sends after the end it saw does nothing.
 def hang_up(state: State, conn: Dock.Conn, farewell: Bytes) -> State
-  if not Engine.joined?(state.store, conn.id)
-    return state
-  end
+  return state if not Engine.joined?(state.store, conn.id)
 
-  return close(state, conn, farewell)
+  close(state, conn, farewell)
 end
 
 # `Dock.close` writes what is queued first, so the replies and the farewell go
@@ -127,5 +119,5 @@ end
 def close(state: State, conn: Dock.Conn, farewell: Bytes) -> State
   send(conn, farewell)
   Dock.close(conn)
-  return state.with(store: Engine.leave(state.store, conn.id))
+  state.with(store: Engine.leave(state.store, conn.id))
 end

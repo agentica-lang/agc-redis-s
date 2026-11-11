@@ -39,69 +39,63 @@ end
 ## The name `TYPE` and `SCAN ... TYPE` use.
 export def type_name(value: Value) -> String
   case value
-    Value.Str(_) -> return "string"
-    Value.Appended(_, _) -> return "string"
-    Value.Hash(_) -> return "hash"
-    Value.Deque(_, _) -> return "list"
-    Value.Members(_, _) -> return "set"
+    Value.Str(_) -> "string"
+    Value.Appended(_, _) -> "string"
+    Value.Hash(_) -> "hash"
+    Value.Deque(_, _) -> "list"
+    Value.Members(_, _) -> "set"
   end
 end
 
-export def string?(value: Value) -> Bool
-  return type_name(value) == "string"
-end
+export def string?(value: Value) -> Bool = type_name(value) == "string"
 
 ## The bytes of a string value. For `Appended` this joins the pieces: a command
 ## that wants the text uses `settled`, so the join happens once per value.
 export def joined_text(value: Value) -> Bytes
   case value
-    Value.Str(bytes) -> return bytes
-    Value.Appended(pieces, _) -> return Bytes.concat(pieces)
-    Value.Hash(_) -> return "".bytes
-    Value.Deque(_, _) -> return "".bytes
-    Value.Members(_, _) -> return "".bytes
+    Value.Str(bytes) -> bytes
+    Value.Appended(pieces, _) -> Bytes.concat(pieces)
+    Value.Hash(_) -> "".bytes
+    Value.Deque(_, _) -> "".bytes
+    Value.Members(_, _) -> "".bytes
   end
 end
 
 ## The size in bytes of a string value, without joining.
 export def value_size(value: Value) -> Int
   case value
-    Value.Str(bytes) -> return bytes.size
-    Value.Appended(_, total) -> return total
-    Value.Hash(_) -> return 0
-    Value.Deque(_, _) -> return 0
-    Value.Members(_, _) -> return 0
+    Value.Str(bytes) -> bytes.size
+    Value.Appended(_, total) -> total
+    Value.Hash(_) -> 0
+    Value.Deque(_, _) -> 0
+    Value.Members(_, _) -> 0
   end
 end
 
 ## The value with `more` added at its end, in O(1) of the size: the pieces are
 ## kept, not joined.
 export def with_more(value: Value, more: Bytes) -> Value
-  if more.empty?
-    return value
-  end
+  return value if more.empty?
 
   case value
     Value.Str(bytes) ->
-      if bytes.empty?
-        return Value.Str(more)
-      end
+      return Value.Str(more) if bytes.empty?
 
-      return Value.Appended([bytes, more], bytes.size + more.size)
-    Value.Appended(pieces, total) -> return Value.Appended(pieces.push(more), total + more.size)
-    Value.Hash(_) -> return value
-    Value.Deque(_, _) -> return value
-    Value.Members(_, _) -> return value
+      Value.Appended([bytes, more], bytes.size + more.size)
+    Value.Appended(pieces, total) -> Value.Appended(pieces.push(more), total + more.size)
+    Value.Hash(_) -> value
+    Value.Deque(_, _) -> value
+    Value.Members(_, _) -> value
   end
 end
 
 ## True when reading the text joins pieces.
 export def pending?(value: Value) -> Bool
   case value
-    Value.Str(_) -> return false
-    Value.Appended(_, _) -> return true
-    Value.Hash(_) -> return false
-    Value.Deque(_, _) -> return false
-    Value.Members(_, _) -> return false
+    Value.Str(_) -> false
+    Value.Appended(_, _) -> true
+    Value.Hash(_) -> false
+    Value.Deque(_, _) -> false
+    Value.Members(_, _) -> false
   end
 end

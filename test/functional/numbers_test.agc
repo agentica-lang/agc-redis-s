@@ -18,9 +18,7 @@ struct Model
   replies: List[Bytes]
 end
 
-def name(key: Int) -> Bytes
-  return "k#{key}".bytes
-end
+def name(key: Int) -> Bytes = "k#{key}".bytes
 
 # `a + b` if it fits in 64 bits, else none, found without a 64-bit sum: each
 # number is a high part times 2^32 plus a low part below 2^32.
@@ -29,11 +27,9 @@ def sum(a: Int, b: Int) -> Optional[Int]
   b_low = (b % STEP + STEP) % STEP
   carry = (a_low + b_low) / STEP
   high = (a - a_low) / STEP + (b - b_low) / STEP + carry
-  if high < -2_147_483_648 or high > 2_147_483_647
-    return none
-  end
+  return none if high < -2_147_483_648 or high > 2_147_483_647
 
-  return some(high * STEP + (a_low + b_low) % STEP)
+  some(high * STEP + (a_low + b_low) % STEP)
 end
 
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -56,9 +52,7 @@ def model_step(model: Model, op: List[Int]) -> Model
   edge = EDGES[xs[2] % EDGES.size]
   old = model.state.get(key)
   kind = xs[0] % 6
-  if kind == 0
-    return Model(state: model.state.put(key, edge), replies: model.replies.push("+OK\r\n".bytes))
-  end
+  return Model(state: model.state.put(key, edge), replies: model.replies.push("+OK\r\n".bytes)) if kind == 0
 
   if kind == 5
     got = "$-1\r\n".bytes
@@ -82,18 +76,15 @@ def model_step(model: Model, op: List[Int]) -> Model
 
   case sum(old.unwrap_or(0), delta)
     none ->
-      return Model(
-        state: model.state,
-        replies: model.replies.push("-ERR increment or decrement would overflow\r\n".bytes),
-      )
-    some(total) -> return Model(state: model.state.put(key, total), replies: model.replies.push(":#{total}\r\n".bytes))
+      Model(state: model.state, replies: model.replies.push("-ERR increment or decrement would overflow\r\n".bytes))
+    some(total) -> Model(state: model.state.put(key, total), replies: model.replies.push(":#{total}\r\n".bytes))
   end
 end
 
 def held(databases: Databases, key: Int) -> Optional[List[Int]]
   case Keyspace.get(space_at(databases, 0), name(key), 0)
-    none -> return none
-    some(value) -> return some(joined_text(value).to_a)
+    none -> none
+    some(value) -> some(joined_text(value).to_a)
   end
 end
 
@@ -105,7 +96,7 @@ def test_increments_follow_a_map() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 4), 12)
-  return Prop.check(ops, Prop.Config(runs: 100)) do |list|
+  Prop.check(ops, Prop.Config(runs: 100)) do |list|
     argvs = list.map do |op| argv_of(op) end
     model = list.reduce(Model(state: {}, replies: [])) do |acc, op| model_step(acc, op) end
     got = run_requests(table, fresh(), argvs)
@@ -117,9 +108,7 @@ def test_increments_follow_a_map() -> Result[Void]
 end
 
 # The bytes of several requests of text words.
-def many(requests: List[List[String]]) -> Bytes
-  return Bytes.concat(requests.map do |r| words(r) end)
-end
+def many(requests: List[List[String]]) -> Bytes = Bytes.concat(requests.map do |r| words(r) end)
 
 # What a model does not say: the texts that are not integers (a space, a zero
 # first, a decimal point, a plus, empty, "-0", 20 digits, a NUL byte), a bad
@@ -216,5 +205,5 @@ def test_texts_of_the_number_commands() -> Result[Void]
     ":1\r\n:2\r\n$4\r\n12.5\r\n",
   ].join("")
 
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end

@@ -49,9 +49,7 @@ end
 ## `nan`, a space first, or out of range (an overflow, or a non-zero value that
 ## rounds to zero).
 export def parse(text: Bytes) -> Optional[Ext]
-  if text.empty? or text.size >= MAX_CHARS
-    return none
-  end
+  return none if text.empty? or text.size >= MAX_CHARS
 
   negative = text[0] == 45
   start = 0
@@ -61,31 +59,21 @@ export def parse(text: Bytes) -> Optional[Ext]
 
   body = text.drop(start)
   word = body.decode("latin-1").unwrap!.downcase
-  if word == "inf" or word == "infinity"
-    return some(Ext(negative: negative, mant: [], exp: 0, infinite: true))
-  end
+  return some(Ext(negative: negative, mant: [], exp: 0, infinite: true)) if word == "inf" or word == "infinity"
 
-  if word.start_with?("0x")
-    return hex_number(negative, body.drop(2))
-  end
+  return hex_number(negative, body.drop(2)) if word.start_with?("0x")
 
-  return decimal_number(negative, body)
+  decimal_number(negative, body)
 end
 
 ## The sum of two numbers, or none when it is NaN or infinite: INCRBYFLOAT
 ## refuses both. One exact addition, then one rounding.
 export def add(a: Ext, b: Ext) -> Optional[Ext]
-  if a.infinite or b.infinite
-    return none
-  end
+  return none if a.infinite or b.infinite
 
-  if a.mant.empty?
-    return finite(b)
-  end
+  return finite(b) if a.mant.empty?
 
-  if b.mant.empty?
-    return finite(a)
-  end
+  return finite(a) if b.mant.empty?
 
   low = a.exp
   if b.exp < low
@@ -94,25 +82,19 @@ export def add(a: Ext, b: Ext) -> Optional[Ext]
 
   left = Bignum.shift_left(a.mant, a.exp - low)
   right = Bignum.shift_left(b.mant, b.exp - low)
-  if a.negative == b.negative
-    return finite(round_to(a.negative, Bignum.add(left, right), low))
-  end
+  return finite(round_to(a.negative, Bignum.add(left, right), low)) if a.negative == b.negative
 
   order = Bignum.compare(left, right)
   # Equal magnitudes give a zero (of either sign: it is printed as 0).
-  if order >= 0
-    return finite(round_to(a.negative, Bignum.sub(left, right), low))
-  end
+  return finite(round_to(a.negative, Bignum.sub(left, right), low)) if order >= 0
 
-  return finite(round_to(b.negative, Bignum.sub(right, left), low))
+  finite(round_to(b.negative, Bignum.sub(right, left), low))
 end
 
 ## The text INCRBYFLOAT stores: `%.17Lf` of the value with the trailing zeros
 ## and then a bare `.` cut, and "-0" as "0". The value is finite.
 export def format(x: Ext) -> Bytes
-  if x.mant.empty?
-    return "0".bytes
-  end
+  return "0".bytes if x.mant.empty?
 
   # The value times 10^17, rounded to a whole number as printf rounds.
   scaled = Bignum.mul_small(Bignum.mul_small(x.mant, 100_000_000), 1_000_000_000)
@@ -131,37 +113,29 @@ export def format(x: Ext) -> Bytes
 
   integer = digits.slice(0, digits.size - 17)
   fraction = trim_zeros(digits.slice(digits.size - 17, 17))
-  if fraction.empty? and integer == "0"
-    return "0".bytes
-  end
+  return "0".bytes if fraction.empty? and integer == "0"
 
   sign = ""
   if x.negative
     sign = "-"
   end
 
-  if fraction.empty?
-    return "#{sign}#{integer}".bytes
-  end
+  return "#{sign}#{integer}".bytes if fraction.empty?
 
-  return "#{sign}#{integer}.#{fraction}".bytes
+  "#{sign}#{integer}.#{fraction}".bytes
 end
 
 # Zero, or a finite number that is not infinite (an overflow is infinite).
 def finite(x: Ext) -> Optional[Ext]
-  if x.infinite
-    return none
-  end
+  return none if x.infinite
 
-  return some(x)
+  some(x)
 end
 
 # `n * 2^e` as an extended number: the mantissa cut to 64 bits (or to the lowest
 # bit of a denormal), a tie to the even, and an infinity above the largest.
 def round_to(negative: Bool, n: List[Int], e: Int) -> Ext
-  if n.empty?
-    return Ext(negative: negative, mant: [], exp: 0, infinite: false)
-  end
+  return Ext(negative: negative, mant: [], exp: 0, infinite: false) if n.empty?
 
   bits = Bignum.bit_length(n)
   lowest = e + bits - MANTISSA_BITS
@@ -182,30 +156,26 @@ def round_to(negative: Bool, n: List[Int], e: Int) -> Ext
   end
 
   top = exp + Bignum.bit_length(mant) - 1
-  return Ext(negative: negative, mant: mant, exp: exp, infinite: not mant.empty? and top > HIGHEST_POWER)
+  Ext(negative: negative, mant: mant, exp: exp, infinite: not mant.empty? and top > HIGHEST_POWER)
 end
 
 # The text read as an extended number, none when it is out of range: an
 # infinity from a finite text (an overflow), or zero from a non-zero text.
 def ranged(negative: Bool, n: List[Int], e: Int) -> Optional[Ext]
-  if n.empty?
-    return some(Ext(negative: negative, mant: [], exp: 0, infinite: false))
-  end
+  return some(Ext(negative: negative, mant: [], exp: 0, infinite: false)) if n.empty?
 
   rounded = round_to(negative, n, e)
-  if rounded.infinite or rounded.mant.empty?
-    return none
-  end
+  return none if rounded.infinite or rounded.mant.empty?
 
-  return some(rounded)
+  some(rounded)
 end
 
 # Digits, an optional `.` and digits (at least one in all), an optional `e` and
 # an exponent with a sign, and nothing after.
 def decimal_number(negative: Bool, t: Bytes) -> Optional[Ext]
   case mantissa(t, 10, 101)
-    none -> return none
-    some(m) -> return decimal_value(negative, m.digits, m.power - m.fraction_size)
+    none -> none
+    some(m) -> decimal_value(negative, m.digits, m.power - m.fraction_size)
   end
 end
 
@@ -215,9 +185,7 @@ def decimal_value(negative: Bool, digits: List[Int], power: Int) -> Optional[Ext
     lead += 1
   end
 
-  if lead == digits.size
-    return ranged(negative, [], 0)
-  end
+  return ranged(negative, [], 0) if lead == digits.size
 
   kept = digits.drop(lead)
   trail = 0
@@ -227,16 +195,12 @@ def decimal_value(negative: Bool, digits: List[Int], power: Int) -> Optional[Ext
 
   kept = kept.take(kept.size - trail)
   e10 = power + trail
-  if kept.size - 1 + e10 >= DECIMAL_HIGH or kept.size + e10 <= DECIMAL_LOW
-    return none
-  end
+  return none if kept.size - 1 + e10 >= DECIMAL_HIGH or kept.size + e10 <= DECIMAL_LOW
 
   big = from_digits(kept, 10)
-  if e10 >= 0
-    return ranged(negative, times_five_to(big, e10), e10)
-  end
+  return ranged(negative, times_five_to(big, e10), e10) if e10 >= 0
 
-  return ranged_quotient(negative, big, 0 - e10)
+  ranged_quotient(negative, big, 0 - e10)
 end
 
 # `big / 10^q` as a number with at least 66 correct bits and, in the lowest bit,
@@ -270,7 +234,7 @@ def ranged_quotient(negative: Bool, big: List[Int], q: Int) -> Optional[Ext]
     marked = Bignum.add(marked, [1])
   end
 
-  return ranged(negative, marked, 0 - k - q - 1)
+  ranged(negative, marked, 0 - k - q - 1)
 end
 
 # `big * 5^power`: with the 2^power left to the exponent of the number, 10^power
@@ -283,25 +247,23 @@ def times_five_to(big: List[Int], power: Int) -> List[Int]
     left -= 12
   end
 
-  return Bignum.mul_small(out, 5.pow(left))
+  Bignum.mul_small(out, 5.pow(left))
 end
 
 # Hex digits, an optional `.` and hex digits (at least one in all), and an
 # optional `p` with a binary exponent: the value is the digits times 2^power.
 def hex_number(negative: Bool, t: Bytes) -> Optional[Ext]
   case mantissa(t, 16, 112)
-    none -> return none
-    some(m) -> return hex_value(negative, from_digits(m.digits, 16), m.power - 4 * m.fraction_size)
+    none -> none
+    some(m) -> hex_value(negative, from_digits(m.digits, 16), m.power - 4 * m.fraction_size)
   end
 end
 
 def hex_value(negative: Bool, big: List[Int], e2: Int) -> Optional[Ext]
   bits = Bignum.bit_length(big)
-  if not big.empty? and (bits + e2 > HIGHEST_POWER + 2 or bits + e2 < LOWEST_BIT - 2)
-    return none
-  end
+  return none if not big.empty? and (bits + e2 > HIGHEST_POWER + 2 or bits + e2 < LOWEST_BIT - 2)
 
-  return ranged(negative, big, e2)
+  ranged(negative, big, e2)
 end
 
 # Digits, an optional `.` and digits (at least one in all), then an optional
@@ -319,16 +281,14 @@ def mantissa(t: Bytes, base: Int, mark: Int) -> Optional[Mantissa]
   end
 
   power = exponent(t, frac_end, mark)
-  if whole_end + fraction_size == 0 or power.end_at != t.size
-    return none
-  end
+  return none if whole_end + fraction_size == 0 or power.end_at != t.size
 
   run = t.take(whole_end)
   if fraction_size > 0
     run = run + t.slice(whole_end + 1, fraction_size)
   end
 
-  return some(Mantissa(digits: run.to_a.map do |b| digit_of(b) end, fraction_size: fraction_size, power: power.value))
+  some(Mantissa(digits: run.to_a.map do |b| digit_of(b) end, fraction_size: fraction_size, power: power.value))
 end
 
 # The end of the run of digits of `base` that starts at `from`.
@@ -338,24 +298,18 @@ def digits_end(t: Bytes, from: Int, base: Int) -> Int
     i += 1
   end
 
-  return i
+  i
 end
 
 # 0 to 15 for a hex digit, -1 for any other byte.
 def digit_of(b: Int) -> Int
-  if b >= 48 and b <= 57
-    return b - 48
-  end
+  return b - 48 if b >= 48 and b <= 57
 
-  if b >= 97 and b <= 102
-    return b - 87
-  end
+  return b - 87 if b >= 97 and b <= 102
 
-  if b >= 65 and b <= 70
-    return b - 55
-  end
+  return b - 55 if b >= 65 and b <= 70
 
-  return -1
+  -1
 end
 
 # The exponent that starts at `at` with the letter `mark` (`e` or `p`, in either
@@ -363,9 +317,7 @@ end
 # exponent; a letter without digits stays unread, so the text does not end
 # there and the caller refuses it.
 def exponent(t: Bytes, at: Int, mark: Int) -> Run
-  if at >= t.size or (t[at] != mark and t[at] != mark - 32)
-    return Run(value: 0, end_at: at)
-  end
+  return Run(value: 0, end_at: at) if at >= t.size or (t[at] != mark and t[at] != mark - 32)
 
   from = at + 1
   negative = from < t.size and t[from] == 45
@@ -374,9 +326,7 @@ def exponent(t: Bytes, at: Int, mark: Int) -> Run
   end
 
   stop = digits_end(t, from, 10)
-  if stop == from
-    return Run(value: 0, end_at: at)
-  end
+  return Run(value: 0, end_at: at) if stop == from
 
   value = 0
   for b in t.slice(from, stop - from)
@@ -390,7 +340,7 @@ def exponent(t: Bytes, at: Int, mark: Int) -> Run
     value = 0 - value
   end
 
-  return Run(value: value, end_at: stop)
+  Run(value: value, end_at: stop)
 end
 
 # The number with these digits in `base` (10 or 16): chunks of nine decimal
@@ -418,7 +368,7 @@ def from_digits(digits: List[Int], base: Int) -> List[Int]
     i += size
   end
 
-  return out
+  out
 end
 
 def trim_zeros(text: String) -> String
@@ -427,5 +377,5 @@ def trim_zeros(text: String) -> String
     size -= 1
   end
 
-  return text.slice(0, size)
+  text.slice(0, size)
 end

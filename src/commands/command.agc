@@ -70,54 +70,44 @@ export struct Command
   container: Bool = false
 end
 
-export def reply(call: Call, answer: Reply) -> Outcome
-  return Outcome(session: call.session, replies: [answer])
-end
+export def reply(call: Call, answer: Reply) -> Outcome = Outcome(session: call.session, replies: [answer])
 
 ## One reply and a new keyspace for the selected database: how a command that
 ## writes answers.
 export def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
-  return Outcome(session: call.session, change: Change.Keyspace(keyspace), replies: [answer])
+  Outcome(session: call.session, change: Change.Keyspace(keyspace), replies: [answer])
 end
 
 ## One reply and a new value for all the databases.
 export def write_all(call: Call, databases: Databases, answer: Reply) -> Outcome
-  return Outcome(session: call.session, change: Change.All(databases), replies: [answer])
+  Outcome(session: call.session, change: Change.All(databases), replies: [answer])
 end
 
 ## One reply and a new session state (`SELECT`, `CLIENT SETNAME`).
 export def reply_with_session(call: Call, answer: Reply, session: Session) -> Outcome
-  return Outcome(session: session, replies: [answer])
+  Outcome(session: session, replies: [answer])
 end
 
 ## One reply, then the server closes the connection.
 export def reply_and_close(call: Call, answer: Reply) -> Outcome
-  return Outcome(session: call.session, replies: [answer], effects: [Effect.Close])
+  Outcome(session: call.session, replies: [answer], effects: [Effect.Close])
 end
 
 ## An error reply; `text` starts with the code, as in `ERR syntax error`.
-export def fail(call: Call, text: String) -> Outcome
-  return fail_bytes(call, text.bytes)
-end
+export def fail(call: Call, text: String) -> Outcome = fail_bytes(call, text.bytes)
 
 ## The same, for a text that echoes what the client sent.
-export def fail_bytes(call: Call, text: Bytes) -> Outcome
-  return reply(call, Reply.Error(text))
-end
+export def fail_bytes(call: Call, text: Bytes) -> Outcome = reply(call, Reply.Error(text))
 
-export def wrong_arity(call: Call) -> Outcome
-  return fail(call, "ERR wrong number of arguments for '#{call.name}' command")
-end
+export def wrong_arity(call: Call) -> Outcome = fail(call, "ERR wrong number of arguments for '#{call.name}' command")
 
 ## The row of a container such as `CLIENT`: Redis counts it as `-2`, a name and
 ## a subcommand. `dispatch` never calls its handler. A container that also
 ## works alone (`COMMAND`) is a `Command` with `container: true` and its own
 ## handler, which runs when no subcommand is given.
-export def container(name: String) -> Command
-  return Command(name: name, arity: -2, handler: &wrong_arity, container: true)
-end
+export def container(name: String) -> Command = Command(name: name, arity: -2, handler: &wrong_arity, container: true)
 
 ## What a command answers when the key holds another type (Redis's `checkType`).
 export def wrong_type(call: Call) -> Outcome
-  return fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")
+  fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")
 end

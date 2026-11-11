@@ -10,23 +10,17 @@ import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command]
-  return [Command(name: "hrandfield", arity: -2, handler: &hrandfield)]
-end
+export def commands() -> List[Command] = [Command(name: "hrandfield", arity: -2, handler: &hrandfield)]
 
 # HRANDFIELD key [count [WITHVALUES]]. The count is read first, then the
 # options, then the key (hrandfieldCommand).
 def hrandfield(call: Call) -> Outcome
-  if call.args.size == 1
-    return random_one(call)
-  end
+  return random_one(call) if call.args.size == 1
 
   case Integer.parse(call.args[1])
-    none -> return fail(call, Errors.NOT_INT)
+    none -> fail(call, Errors.NOT_INT)
     some(count) ->
-      if count == Integer.INT_MIN
-        return fail(call, Errors.LONG_RANGE)
-      end
+      return fail(call, Errors.LONG_RANGE) if count == Integer.INT_MIN
 
       if call.args.size > 3 or (call.args.size == 3 and Args.lower(call.args[2]) != "withvalues")
         return fail(call, Errors.SYNTAX)
@@ -36,44 +30,38 @@ def hrandfield(call: Call) -> Outcome
         return fail(call, "ERR value is out of range")
       end
 
-      return random_many(call, count, call.args.size == 3)
+      random_many(call, count, call.args.size == 3)
   end
 end
 
 def random_one(call: Call) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.NilBulk)
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.NilBulk)
     Held.Fields(fields) ->
       at = Generator.repeating(fields.size, 1, call.random)[0]
-      return reply(call, Reply.Bulk(fields.keys[at]))
+      reply(call, Reply.Bulk(fields.keys[at]))
   end
 end
 
 def random_many(call: Call, count: Int, with_values: Bool) -> Outcome
   case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Array([]))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Array([]))
     Held.Fields(fields) ->
-      if count == 0
-        return reply(call, Reply.Array([]))
-      end
+      return reply(call, Reply.Array([])) if count == 0
 
-      if count < -max_count(with_values)
-        return fail(call, Errors.OUTPUT_LIMIT)
-      end
+      return fail(call, Errors.OUTPUT_LIMIT) if count < -max_count(with_values)
 
-      return reply(call, Reply.Array(pairs_at(fields, Generator.picks(fields.size, count, call.random), with_values)))
+      reply(call, Reply.Array(pairs_at(fields, Generator.picks(fields.size, count, call.random), with_values)))
   end
 end
 
 # The most a negative count may ask: with WITHVALUES each pick is two items.
 def max_count(with_values: Bool) -> Int
-  if with_values
-    return Args.MAX_ITEMS / 2
-  end
+  return Args.MAX_ITEMS / 2 if with_values
 
-  return Args.MAX_ITEMS
+  Args.MAX_ITEMS
 end
 
 def pairs_at(fields: Map[Bytes, Bytes], positions: List[Int], with_values: Bool) -> List[Reply]
@@ -86,5 +74,5 @@ def pairs_at(fields: Map[Bytes, Bytes], positions: List[Int], with_values: Bool)
     end
   end
 
-  return items
+  items
 end

@@ -16,9 +16,7 @@ struct Model
   replies: List[Bytes]
 end
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
 # Fields set and replaced (HSET counts only the new ones), read one by one,
 # deleted (a field named twice counts once), and the key goes with its last
@@ -57,7 +55,7 @@ def test_set_get_and_delete() -> Result[Void]
     "-ERR wrong number of arguments for 'hset' command", "-ERR wrong number of arguments for 'hset' command",
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
 # A write keeps the deadline of a live hash, and a hash that expired is a new
@@ -76,7 +74,7 @@ def test_hash_deadline() -> Result[Void]
     500,
   )
 
-  return Test.eq(fresh_hash.reply.to_a, ":1\r\n:1\r\n:-1\r\n".bytes.to_a)
+  Test.eq(fresh_hash.reply.to_a, ":1\r\n:1\r\n:-1\r\n".bytes.to_a)
 end
 
 # A string command on a hash key and a hash command on a string key answer
@@ -127,7 +125,7 @@ def test_wrong_type_both_ways() -> Result[Void]
 
   try Test.eq(ask(setup.concat(on_string)), ":1\r\n+OK\r\n#{on_string.map do |_| WRONGTYPE end.join("")}")
   replaced = ask(setup.concat([["SET", "h", "v"], ["TYPE", "h"], ["HSET", "h", "a", "1"]]))
-  return Test.eq(replaced, ":1\r\n+OK\r\n+OK\r\n+string\r\n#{WRONGTYPE}")
+  Test.eq(replaced, ":1\r\n+OK\r\n+OK\r\n+string\r\n#{WRONGTYPE}")
 end
 
 # SCAN TYPE lists the keys of that type only, case aside.
@@ -139,7 +137,7 @@ def test_scan_type_hash() -> Result[Void]
     0,
   )
 
-  return Test.eq(
+  Test.eq(
     asked.reply.decode("latin-1").unwrap!,
     "*2\r\n$1\r\n0\r\n*1\r\n$1\r\nh\r\n*2\r\n$1\r\n0\r\n*1\r\n$1\r\ns\r\n",
   )
@@ -166,7 +164,7 @@ def test_listings() -> Result[Void]
     "*3\r\n$1\r\nb\r\n$1\r\nc\r\n$1\r\na", "*3\r\n$1\r\n9\r\n$1\r\n3\r\n$1\r\n7", "*0", "*0", "*0",
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
 # HINCRBY: a missing key or field starts at 0; the increment is read first; a
@@ -204,7 +202,7 @@ def test_hincrby() -> Result[Void]
     "-ERR value is not an integer or out of range",
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
 # HINCRBYFLOAT sums as INCRBYFLOAT does and stores the text it answers; an
@@ -240,7 +238,7 @@ def test_hincrbyfloat() -> Result[Void]
     WRONGTYPE.trim,
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
 # What a client sees first on a hash key: the number or the option is checked
@@ -266,7 +264,7 @@ def test_error_order_on_a_hash_key() -> Result[Void]
     "-ERR syntax error",
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
 # Deleting the last field deletes the key, so a hash made later has no
@@ -280,16 +278,16 @@ def test_last_field_drops_the_deadline() -> Result[Void]
     ["TTL", "h"],
   ])
 
-  return Test.eq(got, ":1\r\n:1\r\n:1\r\n:1\r\n:-1\r\n")
+  Test.eq(got, ":1\r\n:1\r\n:1\r\n:1\r\n:-1\r\n")
 end
 
 # The fields of a reply that lists them: the lines that are no length marker.
 def names_in(reply: String) -> List[String]
-  return reply.split("\r\n").select do |line| line != "" and not ["$", "*", ":"].include?(line.slice(0, 1).to_s) end
+  reply.split("\r\n").select do |line| line != "" and not ["$", "*", ":"].include?(line.slice(0, 1).to_s) end
 end
 
 def count_in(requests: List[List[String]]) -> String
-  return ask([["HSET", "h", "f0", "v0", "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4"]].concat(requests))
+  ask([["HSET", "h", "f0", "v0", "f1", "v1", "f2", "v2", "f3", "v3", "f4", "v4"]].concat(requests))
 end
 
 # HRANDFIELD: one field; a count that covers the hash gives all of it in order;
@@ -335,7 +333,7 @@ def test_hrandfield() -> Result[Void]
 
   noise = count_in([["HRANDFIELD", "h", "-40"]])
   try Test.assert(names_in(noise).size == 40, "forty fields from the hash")
-  return Test.eq(
+  Test.eq(
     ask([["HRANDFIELD", "none"], ["HRANDFIELD", "none", "3"], ["HRANDFIELD", "none", "-3", "WITHVALUES"]]),
     "$-1\r\n*0\r\n*0\r\n",
   )
@@ -379,12 +377,10 @@ def test_hrandfield_errors() -> Result[Void]
     "-ERR count is too large for the output limit",
   ]
 
-  return Test.eq(got, "#{want.join("\r\n")}\r\n")
+  Test.eq(got, "#{want.join("\r\n")}\r\n")
 end
 
-def pair(name: String, value: String) -> String
-  return "$#{name.size}\r\n#{name}\r\n$#{value.size}\r\n#{value}\r\n"
-end
+def pair(name: String, value: String) -> String = "$#{name.size}\r\n#{name}\r\n$#{value.size}\r\n#{value}\r\n"
 
 # HSCAN pages by the hash of the field name, as SCAN does: COUNT 1 gives one
 # field and the hash of the next as the cursor; MATCH filters the names; TYPE is
@@ -423,12 +419,10 @@ def test_hscan() -> Result[Void]
     "-ERR syntax error",
   ]
 
-  return Test.eq(more, "#{want.join("\r\n")}\r\n")
+  Test.eq(more, "#{want.join("\r\n")}\r\n")
 end
 
-def bulk(data: List[Int]) -> Bytes
-  return Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
-end
+def bulk(data: List[Int]) -> Bytes = Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
 
 def argv_for(op: List[Int]) -> List[Bytes]
   xs = op.concat([0, 0, 0])
@@ -473,15 +467,13 @@ def model_step(model: Model, op: List[Int]) -> Model
       answer = Bytes.concat(["*#{order.size * 2}\r\n".bytes].concat(parts))
   end
 
-  return Model(order: order, values: values, replies: model.replies.push(answer))
+  Model(order: order, values: values, replies: model.replies.push(answer))
 end
 
 def count_of(values: Map[Int, List[Int]], field: Int) -> Int
-  if values.has_key?(field)
-    return 1
-  end
+  return 1 if values.has_key?(field)
 
-  return 0
+  0
 end
 
 # HSET, HDEL, HLEN, HGET and HGETALL on one hash against the model, 300 runs.
@@ -489,7 +481,7 @@ def test_a_hash_follows_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 6), 24)
-  return Prop.check(ops, Prop.Config(runs: 300)) do |list|
+  Prop.check(ops, Prop.Config(runs: 300)) do |list|
     start = Model(order: [], values: {}, replies: [])
     model = list.reduce(start) do |acc, op| model_step(acc, op) end
     argvs = list.map do |op| argv_for(op) end

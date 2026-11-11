@@ -9,9 +9,7 @@ import ScanPages from "../../store/scan"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-export def commands() -> List[Command]
-  return [Command(name: "sscan", arity: -3, handler: &sscan)]
-end
+export def commands() -> List[Command] = [Command(name: "sscan", arity: -3, handler: &sscan)]
 
 # SSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
 # the key, then the options. A member that stays for the whole scan is in
@@ -19,26 +17,24 @@ end
 # one page.
 def sscan(call: Call) -> Outcome
   case Scan.cursor_of(call.args[1])
-    none -> return fail(call, Errors.INVALID_CURSOR)
+    none -> fail(call, Errors.INVALID_CURSOR)
     some(cursor) ->
       case Sets.held(call.keyspace, call.args[0], call.now_ms)
-        Held.Foreign -> return wrong_type(call)
-        Held.Missing -> return reply(call, page_reply(0, []))
-        Held.Found(members) -> return scan_members(call, members, cursor)
+        Held.Foreign -> wrong_type(call)
+        Held.Missing -> reply(call, page_reply(0, []))
+        Held.Found(members) -> scan_members(call, members, cursor)
       end
   end
 end
 
 def scan_members(call: Call, members: Members, cursor: Int) -> Outcome
   case Scan.read_options(call.args.drop(2), false)
-    error(text) -> return fail(call, text)
+    error(text) -> fail(call, text)
     ok(options) ->
       page = ScanPages.page(Sets.list(members), cursor, options.count)
       listed = page.keys.select do |member| Scan.matches?(options, member) end
-      return reply(call, page_reply(page.next, listed.map do |member| Reply.Bulk(member) end))
+      reply(call, page_reply(page.next, listed.map do |member| Reply.Bulk(member) end))
   end
 end
 
-def page_reply(next: Int, items: List[Reply]) -> Reply
-  return Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])
-end
+def page_reply(next: Int, items: List[Reply]) -> Reply = Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])

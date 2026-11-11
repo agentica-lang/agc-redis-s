@@ -9,17 +9,11 @@ import Prop from "pkg/prop/prop"
 WRONGTYPE = "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
 NOT_INT = "-ERR value is not an integer or out of range\r\n"
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
-def bulk(text: String) -> String
-  return "$#{text.size}\r\n#{text}\r\n"
-end
+def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String
-  return "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
-end
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
 
 # LPUSH puts its elements at the head one by one (so the last one is first),
 # RPUSH at the tail; the X forms need a live list. LINDEX counts from the tail
@@ -78,7 +72,7 @@ def test_push_and_read() -> Result[Void]
     "-ERR wrong number of arguments for 'lpush' command\r\n",
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # The numbers are read before the key for LRANGE, after the type check for
@@ -98,7 +92,7 @@ def test_index_errors() -> Result[Void]
   ])
 
   want = [":1\r\n", ":1\r\n", NOT_INT, NOT_INT, NOT_INT, NOT_INT, "$-1\r\n", WRONGTYPE, NOT_INT, strings(["a"])]
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # A list command on a string or a hash key, and the other commands on a list
@@ -139,7 +133,7 @@ def test_wrong_type_both_ways() -> Result[Void]
   first = talk(setup)
   asked = exchange(first.databases, Bytes.concat([words(["SCAN", "0", "TYPE", "LIST"]), words(["SET", "l", "v"])]), 0)
   try Test.eq(asked.reply.decode("latin-1").unwrap!, "*2\r\n$1\r\n0\r\n*1\r\n$1\r\nl\r\n+OK\r\n")
-  return Test.eq(
+  Test.eq(
     ask(setup.concat([["SET", "l", "v"], ["TYPE", "l"], ["LLEN", "l"]])),
     "+OK\r\n:1\r\n:1\r\n+OK\r\n+string\r\n#{WRONGTYPE}",
   )
@@ -161,7 +155,7 @@ def test_list_deadline() -> Result[Void]
     500,
   )
 
-  return Test.eq(fresh_list.reply.to_a, ":1\r\n:1\r\n:-1\r\n:2\r\n".bytes.to_a)
+  Test.eq(fresh_list.reply.to_a, ":1\r\n:1\r\n:-1\r\n:2\r\n".bytes.to_a)
 end
 
 # One list against a model that is a List: pushes at both ends (also the X
@@ -172,7 +166,7 @@ def test_a_list_follows_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 99)
   ops = Prop.list(Prop.list(numbers, 3), 25)
-  return Prop.check(ops, Prop.Config(runs: 150)) do |list|
+  Prop.check(ops, Prop.Config(runs: 150)) do |list|
     requests = list.map do |op| argv_of(op.concat([0, 0, 0])) end
     expected = modeled(list.map do |op| op.concat([0, 0, 0]) end)
     Prop.eq(run_requests(table, fresh(), requests).reply.to_a, expected.bytes.to_a)
@@ -227,7 +221,7 @@ def modeled(ops: List[List[Int]]) -> String
     end
   end
 
-  return out
+  out
 end
 
 def index_reply(held: List[String], index: Int) -> String
@@ -236,11 +230,9 @@ def index_reply(held: List[String], index: Int) -> String
     position = held.size + index
   end
 
-  if position < 0 or position >= held.size
-    return "$-1\r\n"
-  end
+  return "$-1\r\n" if position < 0 or position >= held.size
 
-  return bulk(held[position])
+  bulk(held[position])
 end
 
 def range_reply(held: List[String], start: Int, stop: Int) -> String
@@ -261,5 +253,5 @@ def range_reply(held: List[String], start: Int, stop: Int) -> String
     end
   end
 
-  return strings(picked)
+  strings(picked)
 end

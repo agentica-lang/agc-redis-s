@@ -9,15 +9,13 @@ import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-export def commands() -> List[Command]
-  return [Command(name: "smove", arity: 4, handler: &smove)]
-end
+export def commands() -> List[Command] = [Command(name: "smove", arity: 4, handler: &smove)]
 
 def smove(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Foreign -> return wrong_type(call)
-    Held.Found(source) -> return into_destination(call, source)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Foreign -> wrong_type(call)
+    Held.Found(source) -> into_destination(call, source)
   end
 end
 
@@ -30,19 +28,15 @@ def into_destination(call: Call, source: Members) -> Outcome
   end
 
   member = call.args[2]
-  if call.args[0] == call.args[1] or not Sets.has?(source, member)
-    return reply(call, flag(Sets.has?(source, member)))
-  end
+  return reply(call, flag(Sets.has?(source, member))) if call.args[0] == call.args[1] or not Sets.has?(source, member)
 
   emptied = Sets.store(call.keyspace, call.args[0], Sets.remove(source, member), call.now_ms)
   grown = Sets.store(emptied, call.args[1], Sets.add(target, member), call.now_ms)
-  return write(call, grown, Reply.Integer(1))
+  write(call, grown, Reply.Integer(1))
 end
 
 def flag(found: Bool) -> Reply
-  if found
-    return Reply.Integer(1)
-  end
+  return Reply.Integer(1) if found
 
-  return Reply.Integer(0)
+  Reply.Integer(0)
 end

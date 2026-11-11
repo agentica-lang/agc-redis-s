@@ -13,11 +13,11 @@ import {Value} from "../../src/store/value"
 # is no data command yet.
 def store_key(call: Call) -> Outcome
   keyspace = put(call.keyspace, call.args[0], Value.Str(call.args[0]), 0)
-  return write(call, keyspace, Reply.Simple("OK"))
+  write(call, keyspace, Reply.Simple("OK"))
 end
 
 def run(table: Map[String, Command], store: Store, line: List[String]) -> Store
-  return Runner.run(table, store, 1, line.map do |w| w.bytes end, 0).store
+  Runner.run(table, store, 1, line.map do |w| w.bytes end, 0).store
 end
 
 # The new keyspace of a command goes back to the database it ran in, also for
@@ -33,7 +33,7 @@ def test_a_write_lands_in_the_selected_database() -> Result[Void]
 
   try Test.eq(size(space_at(state.databases, 0)), 1)
   try Test.eq(size(space_at(state.databases, 5)), 2)
-  return Test.eq(size(space_at(state.databases, 1)), 0)
+  Test.eq(size(space_at(state.databases, 1)), 0)
 end
 
 # A sweep is due every 100 ms, and when the clock went back (a negative gap).
@@ -41,7 +41,7 @@ def test_sweep_is_due_by_time_and_after_a_clock_step_back() -> Result[Void]
   try Test.eq(Engine.sweep_due?(1000, 1099), false)
   try Test.eq(Engine.sweep_due?(1000, 1100), true)
   try Test.eq(Engine.sweep_due?(1000, 999), true)
-  return Test.eq(Engine.sweep_due?(1000, 1000), false)
+  Test.eq(Engine.sweep_due?(1000, 1000), false)
 end
 
 # A request takes two steps of the generator, `Call.random` having both: the
@@ -51,5 +51,5 @@ def test_a_request_advances_the_seed_by_two_steps() -> Result[Void]
   state = Engine.join(started, 1)
   done = Runner.run(Table.build(), state, 1, ["PING".bytes], 7)
   first = Generator.advance(state.seed, 7)
-  return Test.eq(done.store.seed, Generator.advance(first, 7))
+  Test.eq(done.store.seed, Generator.advance(first, 7))
 end

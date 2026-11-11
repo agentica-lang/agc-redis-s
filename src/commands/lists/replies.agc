@@ -22,14 +22,14 @@ export def range(seq: Seq, span: Span, reverse: Bool) -> Reply
     parts = parts.push(Writer.bulk_header(element.size)).push(element).push(CRLF)
   end
 
-  return Reply.Raw(Bytes.concat(parts))
+  Reply.Raw(Bytes.concat(parts))
 end
 
 ## The reply of a pop of `taken` elements (1 up to the length) from `side`: from
 ## the head in order, from the tail inwards.
 export def popped(seq: Seq, side: End, taken: Int) -> Reply
   case side
-    End.Head -> return range(seq, Span(first: 0, last: taken - 1), false)
-    End.Tail -> return range(seq, Span(first: Lists.length(seq) - taken, last: Lists.length(seq) - 1), true)
+    End.Head -> range(seq, Span(first: 0, last: taken - 1), false)
+    End.Tail -> range(seq, Span(first: Lists.length(seq) - taken, last: Lists.length(seq) - 1), true)
   end
 end

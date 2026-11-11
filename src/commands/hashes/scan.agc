@@ -9,9 +9,7 @@ import Hashes from "../../store/hashes"
 import ScanPages from "../../store/scan"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command]
-  return [Command(name: "hscan", arity: -3, handler: &hscan)]
-end
+export def commands() -> List[Command] = [Command(name: "hscan", arity: -3, handler: &hscan)]
 
 # HSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
 # the key, then the options. The pages are ordered by the hash of the field
@@ -20,20 +18,20 @@ end
 # follows COUNT, which the protocol allows.
 def hscan(call: Call) -> Outcome
   case Scan.cursor_of(call.args[1])
-    none -> return fail(call, Errors.INVALID_CURSOR)
+    none -> fail(call, Errors.INVALID_CURSOR)
     some(cursor) ->
       case Hashes.held(call.keyspace, call.args[0], call.now_ms)
-        Held.Foreign -> return wrong_type(call)
-        Held.Missing -> return reply(call, scan_reply(0, []))
-        Held.Fields(fields) -> return scan_fields(call, fields, cursor)
+        Held.Foreign -> wrong_type(call)
+        Held.Missing -> reply(call, scan_reply(0, []))
+        Held.Fields(fields) -> scan_fields(call, fields, cursor)
       end
   end
 end
 
 def scan_fields(call: Call, fields: Map[Bytes, Bytes], cursor: Int) -> Outcome
   case Scan.read_options(call.args.drop(2), false)
-    error(text) -> return fail(call, text)
-    ok(options) -> return scan_page(call, fields, cursor, options)
+    error(text) -> fail(call, text)
+    ok(options) -> scan_page(call, fields, cursor, options)
   end
 end
 
@@ -45,9 +43,7 @@ def scan_page(call: Call, fields: Map[Bytes, Bytes], cursor: Int, options: Scan.
     items = items.push(Reply.Bulk(name)).push(Reply.Bulk(fields.get(name, "".bytes)))
   end
 
-  return reply(call, scan_reply(page.next, items))
+  reply(call, scan_reply(page.next, items))
 end
 
-def scan_reply(next: Int, items: List[Reply]) -> Reply
-  return Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])
-end
+def scan_reply(next: Int, items: List[Reply]) -> Reply = Reply.Array([Reply.Bulk("#{next}".bytes), Reply.Array(items)])

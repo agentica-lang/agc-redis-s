@@ -8,16 +8,12 @@ export MODULUS = 2_147_483_648
 ## One step; the product stays under 2^62, so no overflow. A `salt` (the clock
 ## in the store task) is added so the sequence is not the same after every
 ## start; the default leaves the plain generator.
-export def advance(seed: Int, salt: Int = 0) -> Int
-  return (seed * 1_103_515_245 + 12_345 + salt % 65_536) % MODULUS
-end
+export def advance(seed: Int, salt: Int = 0) -> Int = (seed * 1_103_515_245 + 12_345 + salt % 65_536) % MODULUS
 
 ## A number in 0...size from two steps of the generator. The low bits of a
 ## linear congruential generator have a short period (the lowest alternates), so
 ## each step gives its high 15 bits and the two make 30.
-export def below(high: Int, low: Int, size: Int) -> Int
-  return ((high / 65536) * 32768 + low / 65536) % size
-end
+export def below(high: Int, low: Int, size: Int) -> Int = ((high / 65536) * 32768 + low / 65536) % size
 
 ## `count` positions in 0...size, each picked at random with repeats
 ## (HRANDFIELD, SRANDMEMBER with a negative count); `random` seeds the draws.
@@ -30,7 +26,7 @@ export def repeating(size: Int, count: Int, random: Int) -> List[Int]
     picked = picked.push(below(first, seed, size))
   end
 
-  return picked
+  picked
 end
 
 ## `count` different positions of 0...size, in ascending order, every subset
@@ -47,7 +43,7 @@ export def distinct(size: Int, count: Int, random: Int) -> List[Int]
     end
   end
 
-  return picked
+  picked
 end
 
 ## The positions of 0...size a RANDFIELD or RANDMEMBER count asks for: a
@@ -55,17 +51,11 @@ end
 ## one gives that many different positions, also in order (as the listpack case
 ## of Redis); a negative one (or 1) samples with repeats.
 export def picks(size: Int, count: Int, random: Int) -> List[Int]
-  if count < 0
-    return repeating(size, 0 - count, random)
-  end
+  return repeating(size, 0 - count, random) if count < 0
 
-  if count >= size
-    return (0...size).to_a
-  end
+  return (0...size).to_a if count >= size
 
-  if count > 1
-    return distinct(size, count, random)
-  end
+  return distinct(size, count, random) if count > 1
 
-  return repeating(size, 1, random)
+  repeating(size, 1, random)
 end

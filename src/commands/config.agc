@@ -30,7 +30,7 @@ struct Setting
 end
 
 export def commands() -> List[Command]
-  return [
+  [
     container("config"),
     Command(name: "config|get", arity: -3, handler: &get),
     Command(name: "config|set", arity: -4, handler: &change),
@@ -50,36 +50,30 @@ def get(call: Call) -> Outcome
     end
   end
 
-  return reply(call, Reply.Array(items))
+  reply(call, Reply.Array(items))
 end
 
 # An exact lookup answers with the name the client typed.
 def echoed(pattern: Bytes, setting: Setting) -> Bytes
-  if Args.lower(pattern) == setting.name
-    return pattern
-  end
+  return pattern if Args.lower(pattern) == setting.name
 
-  return setting.name.bytes
+  setting.name.bytes
 end
 
 # A name with a pattern character (`[`, `*` or `?`) is matched as a glob, any
 # case; any other is looked up whole, any case.
 def matches?(pattern: Bytes, name: String) -> Bool
   special = pattern.to_a.any? do |byte| byte == 91 or byte == 42 or byte == 63 end
-  if special
-    return Glob.matches?(pattern, name.bytes, true)
-  end
+  return Glob.matches?(pattern, name.bytes, true) if special
 
-  return Args.lower(pattern) == name
+  Args.lower(pattern) == name
 end
 
 # Pairs of a name and a value. The first name that is not a setting is the
 # error, as in Redis; a setting is one Redis would not let change at run time,
 # since this server keeps no state for it.
 def change(call: Call) -> Outcome
-  if call.args.size % 2 == 1
-    return fail(call, Errors.SYNTAX)
-  end
+  return fail(call, Errors.SYNTAX) if call.args.size % 2 == 1
 
   i = 0
   while i < call.args.size
@@ -100,5 +94,5 @@ def change(call: Call) -> Outcome
     "') - can't set immutable config".bytes
   )
 
-  return fail_bytes(call, text)
+  fail_bytes(call, text)
 end

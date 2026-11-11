@@ -26,15 +26,13 @@ export struct Options
   type: Optional[String] = none
 end
 
-export def commands() -> List[Command]
-  return [Command(name: "scan", arity: -2, handler: &scan)]
-end
+export def commands() -> List[Command] = [Command(name: "scan", arity: -2, handler: &scan)]
 
 ## Whether a name passes MATCH (HSCAN filters field names with it too).
 export def matches?(options: Options, name: Bytes) -> Bool
   case options.pattern
-    none -> return true
-    some(pattern) -> return (pattern.size == 1 and pattern[0] == STAR) or Glob.matches?(pattern, name)
+    none -> true
+    some(pattern) -> (pattern.size == 1 and pattern[0] == STAR) or Glob.matches?(pattern, name)
   end
 end
 
@@ -49,9 +47,7 @@ export def read_options(words: List[Bytes], typed: Bool) -> Result[Options]
       case Integer.parse(words[i + 1])
         none -> return error(Errors.NOT_INT)
         some(count) ->
-          if count < 1
-            return error(Errors.SYNTAX)
-          end
+          return error(Errors.SYNTAX) if count < 1
 
           found = found.with(count: count)
       end
@@ -66,16 +62,14 @@ export def read_options(words: List[Bytes], typed: Bool) -> Result[Options]
     i += 2
   end
 
-  return ok(found)
+  ok(found)
 end
 
 ## `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
 ## text is 0. A number above 2^64 - 1 is an error (ERANGE), also after a `-`.
 ## `-N` is a huge number, which is a cursor past the end.
 export def cursor_of(text: Bytes) -> Optional[Int]
-  if text.empty?
-    return some(0)
-  end
+  return some(0) if text.empty?
 
   negative = text[0] == 45
   digits = text.to_a
@@ -83,37 +77,29 @@ export def cursor_of(text: Bytes) -> Optional[Int]
     digits = text.drop(1).to_a
   end
 
-  if digits.empty? or digits.any? do |byte| byte < 48 or byte > 57 end
-    return none
-  end
+  return none if digits.empty? or digits.any? do |byte| byte < 48 or byte > 57 end
 
   significant = digits.drop_while do |byte| byte == 48 end
-  if too_big?(significant)
-    return none
-  end
+  return none if too_big?(significant)
 
-  if significant.empty?
-    return some(0)
-  end
+  return some(0) if significant.empty?
 
-  if negative or significant.size > 10
-    return some(BEYOND)
-  end
+  return some(BEYOND) if negative or significant.size > 10
 
-  return some(significant.reduce(0) do |total, byte| total * 10 + byte - 48 end)
+  some(significant.reduce(0) do |total, byte| total * 10 + byte - 48 end)
 end
 
 def scan(call: Call) -> Outcome
   case cursor_of(call.args[0])
-    none -> return fail(call, Errors.INVALID_CURSOR)
-    some(cursor) -> return scan_from(call, cursor)
+    none -> fail(call, Errors.INVALID_CURSOR)
+    some(cursor) -> scan_from(call, cursor)
   end
 end
 
 def scan_from(call: Call, cursor: Int) -> Outcome
   case read_options(call.args.drop(1), true)
-    error(text) -> return fail(call, text)
-    ok(options) -> return scan_page(call, cursor, options)
+    error(text) -> fail(call, text)
+    ok(options) -> scan_page(call, cursor, options)
   end
 end
 
@@ -121,36 +107,26 @@ def scan_page(call: Call, cursor: Int, options: Options) -> Outcome
   names = call.keyspace.entries.keys
   page = Scan.page(names, cursor, options.count)
   listed = page.keys.select do |key| wanted?(call, options, key) end
-  return reply(
-    call,
-    Reply.Array([Reply.Bulk("#{page.next}".bytes), Reply.Array(listed.map do |key| Reply.Bulk(key) end)]),
-  )
+  reply(call, Reply.Array([Reply.Bulk("#{page.next}".bytes), Reply.Array(listed.map do |key| Reply.Bulk(key) end)]))
 end
 
 def wanted?(call: Call, options: Options, key: Bytes) -> Bool
   case Keyspace.get(call.keyspace, key, call.now_ms)
     none -> return false
-    some(value) ->
-      if options.type.some? and options.type != some(type_name(value))
-        return false
-      end
+    some(value) -> return false if options.type.some? and options.type != some(type_name(value))
   end
 
-  return matches?(options, key)
+  matches?(options, key)
 end
 
 # Above 18446744073709551615, written in digits with no leading zero.
 def too_big?(digits: List[Int]) -> Bool
   limit = "18446744073709551615".bytes.to_a
-  if digits.size != limit.size
-    return digits.size > limit.size
-  end
+  return digits.size > limit.size if digits.size != limit.size
 
   for i in 0...digits.size
-    if digits[i] != limit[i]
-      return digits[i] > limit[i]
-    end
+    return digits[i] > limit[i] if digits[i] != limit[i]
   end
 
-  return false
+  false
 end

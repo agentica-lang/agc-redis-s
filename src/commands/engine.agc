@@ -19,34 +19,22 @@ export struct Store
 end
 
 ## The store of a server that just started.
-export def start(databases: Databases) -> Store
-  return Store(databases: databases, sessions: {})
-end
+export def start(databases: Databases) -> Store = Store(databases: databases, sessions: {})
 
 ## A client connected: it starts in database 0 with no name.
-export def join(store: Store, client_id: Int) -> Store
-  return store.with(sessions: store.sessions.put(client_id, Session()))
-end
+export def join(store: Store, client_id: Int) -> Store = store.with(sessions: store.sessions.put(client_id, Session()))
 
 ## Whether the client still has a session (it did not quit or leave).
-export def joined?(store: Store, client_id: Int) -> Bool
-  return store.sessions.has_key?(client_id)
-end
+export def joined?(store: Store, client_id: Int) -> Bool = store.sessions.has_key?(client_id)
 
 ## A client left: its session goes.
-export def leave(store: Store, client_id: Int) -> Store
-  return store.with(sessions: store.sessions.delete(client_id))
-end
+export def leave(store: Store, client_id: Int) -> Store = store.with(sessions: store.sessions.delete(client_id))
 
 ## Whether a sweep is due: `SWEEP_MS` passed since the last one, or the clock
 ## went back (a negative gap would stop the sweeps until it caught up).
-export def sweep_due?(last_ms: Int, now_ms: Int) -> Bool
-  return now_ms < last_ms or now_ms - last_ms >= SWEEP_MS
-end
+export def sweep_due?(last_ms: Int, now_ms: Int) -> Bool = now_ms < last_ms or now_ms - last_ms >= SWEEP_MS
 
 ## The active expiry: the keys that are past their deadline are dropped. The
 ## store task calls it on a timer; no reply depends on it, as an expired key
 ## already counts as missing.
-export def expire_keys(store: Store, now_ms: Int) -> Store
-  return store.with(databases: sweep(store.databases, now_ms))
-end
+export def expire_keys(store: Store, now_ms: Int) -> Store = store.with(databases: sweep(store.databases, now_ms))

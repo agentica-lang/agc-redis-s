@@ -26,7 +26,7 @@ export def hash(key: Bytes) -> Int
     total = (total * 257 + byte + 1) % MODULUS
   end
 
-  return total
+  total
 end
 
 ## About `count` keys (more when hashes are equal), from the cursor on. It hashes
@@ -38,23 +38,19 @@ export def page(names: List[Bytes], cursor: Int, count: Int) -> Page
   later = ranked.select do |item| item.rank >= cursor end
   ordered = later.sort_by do |item| item.rank end
   taken = take_count(ordered, count)
-  if taken >= ordered.size
-    return Page(keys: ordered.map do |item| item.key end, next: 0)
-  end
+  return Page(keys: ordered.map do |item| item.key end, next: 0) if taken >= ordered.size
 
-  return Page(keys: ordered.take(taken).map do |item| item.key end, next: ordered[taken].rank)
+  Page(keys: ordered.take(taken).map do |item| item.key end, next: ordered[taken].rank)
 end
 
 # How many to take: `count`, then on while the next key has the hash of the last.
 def take_count(ordered: List[Ranked], count: Int) -> Int
   taken = count
-  if taken > ordered.size
-    return ordered.size
-  end
+  return ordered.size if taken > ordered.size
 
   while taken < ordered.size and ordered[taken].rank == ordered[taken - 1].rank
     taken += 1
   end
 
-  return taken
+  taken
 end

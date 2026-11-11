@@ -14,11 +14,11 @@ end
 
 export def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
   case Keyspace.get(keyspace, key, now_ms)
-    none -> return Held.Missing
+    none -> Held.Missing
     some(value) ->
       case value
-        Value.Hash(fields) -> return Held.Fields(fields)
-        _ -> return Held.Foreign
+        Value.Hash(fields) -> Held.Fields(fields)
+        _ -> Held.Foreign
       end
   end
 end
@@ -26,9 +26,7 @@ end
 ## The keyspace with `fields` at the key. A live key keeps its deadline (the
 ## write changes the old value); an empty hash removes the key.
 export def store(keyspace: Keyspace.Keyspace, key: Bytes, fields: Map[Bytes, Bytes], now_ms: Int) -> Keyspace.Keyspace
-  if fields.empty?
-    return Keyspace.delete(keyspace, key)
-  end
+  return Keyspace.delete(keyspace, key) if fields.empty?
 
-  return Keyspace.put(keyspace, key, Value.Hash(fields), now_ms)
+  Keyspace.put(keyspace, key, Value.Hash(fields), now_ms)
 end

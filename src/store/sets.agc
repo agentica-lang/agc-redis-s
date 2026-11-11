@@ -23,11 +23,11 @@ end
 
 export def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
   case Keyspace.get(keyspace, key, now_ms)
-    none -> return Held.Missing
+    none -> Held.Missing
     some(value) ->
       case value
-        Value.Members(index, slots) -> return Held.Found(Members(index: index, slots: slots))
-        _ -> return Held.Foreign
+        Value.Members(index, slots) -> Held.Found(Members(index: index, slots: slots))
+        _ -> Held.Foreign
       end
   end
 end
@@ -35,60 +35,46 @@ end
 ## The keyspace with `members` at the key. A live key keeps its deadline (the
 ## write changes the old value); an empty set removes the key.
 export def store(keyspace: Keyspace.Keyspace, key: Bytes, members: Members, now_ms: Int) -> Keyspace.Keyspace
-  if members.slots.empty?
-    return Keyspace.delete(keyspace, key)
-  end
+  return Keyspace.delete(keyspace, key) if members.slots.empty?
 
-  return Keyspace.put(keyspace, key, Value.Members(members.index, members.slots), now_ms)
+  Keyspace.put(keyspace, key, Value.Members(members.index, members.slots), now_ms)
 end
 
 ## The keyspace with `members` as a new value at the key, whatever it held and
 ## whatever deadline it had (setKey, which the STORE commands use); an empty set
 ## removes the key.
 export def replace(keyspace: Keyspace.Keyspace, key: Bytes, members: Members) -> Keyspace.Keyspace
-  if members.slots.empty?
-    return Keyspace.delete(keyspace, key)
-  end
+  return Keyspace.delete(keyspace, key) if members.slots.empty?
 
-  return Keyspace.set(keyspace, key, Value.Members(members.index, members.slots))
+  Keyspace.set(keyspace, key, Value.Members(members.index, members.slots))
 end
 
-export def empty() -> Members
-  return Members(index: {}, slots: {})
-end
+export def empty() -> Members = Members(index: {}, slots: {})
 
-export def size(members: Members) -> Int
-  return members.slots.size
-end
+export def size(members: Members) -> Int = members.slots.size
 
-export def has?(members: Members, member: Bytes) -> Bool
-  return members.index.has_key?(member)
-end
+export def has?(members: Members, member: Bytes) -> Bool = members.index.has_key?(member)
 
 ## The set with `member` added; a member that is there leaves it as it is.
 export def add(members: Members, member: Bytes) -> Members
-  if has?(members, member)
-    return members
-  end
+  return members if has?(members, member)
 
   slot = members.slots.size
-  return Members(index: members.index.put(member, slot), slots: members.slots.put(slot, member))
+  Members(index: members.index.put(member, slot), slots: members.slots.put(slot, member))
 end
 
 ## The set without `member`: the last member takes its slot.
 export def remove(members: Members, member: Bytes) -> Members
   case members.index.get(member)
-    none -> return members
+    none -> members
     some(slot) ->
       last = members.slots.size - 1
       moved = members.slots.get(last, member)
       slots = members.slots.delete(last)
       index = members.index.delete(member)
-      if slot == last
-        return Members(index: index, slots: slots)
-      end
+      return Members(index: index, slots: slots) if slot == last
 
-      return Members(index: index.put(moved, slot), slots: slots.put(slot, moved))
+      Members(index: index.put(moved, slot), slots: slots.put(slot, moved))
   end
 end
 
@@ -104,20 +90,18 @@ export def gather(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -
     end
   end
 
-  return some(found)
+  some(found)
 end
 
 ## The members of any of the sets, each once.
 export def union(sets: List[Members]) -> List[Bytes]
-  return list(sets.reduce(empty()) do |all, members| merge(all, members) end)
+  list(sets.reduce(empty()) do |all, members| merge(all, members) end)
 end
 
 ## The members of all the sets, taken from the smallest one: at most `limit` of
 ## them when `limit` is above 0 (SINTERCARD stops there).
 export def intersection(sets: List[Members], limit: Int) -> List[Bytes]
-  if sets.empty?
-    return []
-  end
+  return [] if sets.empty?
 
   ordered = sets.sort_by do |members| size(members) end
   others = ordered.drop(1)
@@ -125,47 +109,31 @@ export def intersection(sets: List[Members], limit: Int) -> List[Bytes]
   for member in list(ordered[0])
     if in_all?(others, member)
       common = common.push(member)
-      if limit > 0 and common.size >= limit
-        break
-      end
+      break if limit > 0 and common.size >= limit
     end
   end
 
-  return common
+  common
 end
 
 ## The members of the first set that no other one has.
 export def difference(sets: List[Members]) -> List[Bytes]
-  if sets.empty?
-    return []
-  end
+  return [] if sets.empty?
 
   others = sets.drop(1)
-  return list(sets[0]).select do |member| not in_any?(others, member) end
+  list(sets[0]).select do |member| not in_any?(others, member) end
 end
 
 ## The member in a slot, 0 up to size - 1.
-export def at(members: Members, slot: Int) -> Bytes
-  return members.slots.get(slot, "".bytes)
-end
+export def at(members: Members, slot: Int) -> Bytes = members.slots.get(slot, "".bytes)
 
 ## All the members, in slot order.
-export def list(members: Members) -> List[Bytes]
-  return members.slots.values
-end
+export def list(members: Members) -> List[Bytes] = members.slots.values
 
-export def from_list(items: List[Bytes]) -> Members
-  return items.reduce(empty()) do |members, item| add(members, item) end
-end
+export def from_list(items: List[Bytes]) -> Members = items.reduce(empty()) do |members, item| add(members, item) end
 
-def merge(into: Members, more: Members) -> Members
-  return list(more).reduce(into) do |all, member| add(all, member) end
-end
+def merge(into: Members, more: Members) -> Members = list(more).reduce(into) do |all, member| add(all, member) end
 
-def in_all?(sets: List[Members], member: Bytes) -> Bool
-  return sets.all? do |members| has?(members, member) end
-end
+def in_all?(sets: List[Members], member: Bytes) -> Bool = sets.all? do |members| has?(members, member) end
 
-def in_any?(sets: List[Members], member: Bytes) -> Bool
-  return sets.any? do |members| has?(members, member) end
-end
+def in_any?(sets: List[Members], member: Bytes) -> Bool = sets.any? do |members| has?(members, member) end

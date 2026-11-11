@@ -5,5 +5,5 @@ name = "agc-redis-s"
 blank_line_after_end = true
 
 [dependencies]
-prop = { git = "https://github.com/agentica-lang/packages", tag = "prop-0.1.0", subdir = "prop" }
-dock = { git = "https://github.com/agentica-lang/packages", tag = "dock-0.1.1", subdir = "dock" }
+prop = { git = "https://github.com/agentica-lang/packages", tag = "prop-0.2.0", subdir = "prop" }
+dock = { git = "https://github.com/agentica-lang/packages", tag = "dock-0.2.0", subdir = "dock" }

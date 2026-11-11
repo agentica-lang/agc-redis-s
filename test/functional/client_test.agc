@@ -21,7 +21,7 @@ def test_client_state() -> Result[Void]
   )
 
   expected = ":1\r\n$-1\r\n+OK\r\n$3\r\napp\r\n+OK\r\n+OK\r\n+OK\r\n$#{line.bytesize}\r\n#{line}\r\n+OK\r\n$-1\r\n"
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end
 
 # CLIENT LIST with a type or ids answers for the one client it knows.
@@ -44,7 +44,7 @@ def test_client_list_filters() -> Result[Void]
     "-ERR Invalid client ID\r\n-ERR Unknown client type 'bogus'\r\n-ERR syntax error\r\n",
   ].join("")
 
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end
 
 # Errors name the subcommand as `client|id`; an unknown one points to HELP; the
@@ -72,5 +72,5 @@ def test_client_errors() -> Result[Void]
     "-ERR unknown command 'client|id', with args beginning with: \r\n",
   ].join("")
 
-  return Test.eq(result.reply, expected.bytes)
+  Test.eq(result.reply, expected.bytes)
 end
