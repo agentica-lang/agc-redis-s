@@ -4,9 +4,7 @@ import Keys from "../../src/commands/keys"
 import {fresh} from "../../src/store/databases"
 import {Exchange, exchange, talk, words} from "../support"
 
-def bulk(text: String) -> String
-  return "$#{text.bytesize}\r\n#{text}\r\n"
-end
+def bulk(text: String) -> String = "$#{text.bytesize}\r\n#{text}\r\n"
 
 # SET b has a deadline at 10; the first batch runs at the clock 0 and the second
 # at 11, when b is expired but still held.
@@ -31,7 +29,7 @@ def test_del_exists_type_and_touch() -> Result[Void]
 
   want = ":3\r\n:1\r\n+string\r\n+none\r\n:4\r\n:0\r\n:3\r\n:0\r\n:0\r\n"
   try Test.eq(later.reply.to_a, "#{want}-ERR wrong number of arguments for 'del' command\r\n".bytes.to_a)
-  return Test.eq(exchange(first.databases, words(["UNLINK", "a", "c"])).reply.to_a, ":2\r\n".bytes.to_a)
+  Test.eq(exchange(first.databases, words(["UNLINK", "a", "c"])).reply.to_a, ":2\r\n".bytes.to_a)
 end
 
 # KEYS: `*` alone takes every live key, also one with an empty name; any other
@@ -57,7 +55,7 @@ def test_keys_patterns() -> Result[Void]
   list = "*3\r\n$5\r\nhello\r\n$5\r\nhallo\r\n$0\r\n\r\n"
   pair = "*2\r\n$5\r\nhello\r\n$5\r\nhallo\r\n"
   want = [list, pair, pair, "*2\r\n$5\r\nhello\r\n$5\r\nhallo\r\n", "*0\r\n", "*1\r\n$0\r\n\r\n", "*0\r\n"]
-  return Test.eq(later.reply.to_a, want.join("").bytes.to_a)
+  Test.eq(later.reply.to_a, want.join("").bytes.to_a)
 end
 
 # RENAME and RENAMENX: the value moves with its deadline, what was at the new
@@ -109,7 +107,7 @@ def test_rename_and_renamenx() -> Result[Void]
   try Test.eq(got.reply.to_a, want.join("").bytes.to_a)
 
   later = exchange(got.databases, Bytes.concat([words(["RENAME", "b", "g"]), words(["RENAMENX", "f", "b"])]), 11)
-  return Test.eq(later.reply.to_a, "#{missing}:1\r\n".bytes.to_a)
+  Test.eq(later.reply.to_a, "#{missing}:1\r\n".bytes.to_a)
 end
 
 # RANDOMKEY answers nil with no live key and otherwise a live key, and over many
@@ -121,7 +119,7 @@ def test_randomkey_picks_a_live_key() -> Result[Void]
   got = exchange(first.databases, Bytes.concat((0...60).to_a.map do |_| words(["RANDOMKEY"]) end), 6)
   seen = ["a", "b", "c"].select do |name| got.reply.to_a.include?(name.bytes[0]) end
   try Test.eq(seen, ["a", "b", "c"])
-  return Test.assert(not got.reply.to_a.include?("g".bytes[0]), "an expired key is never picked")
+  Test.assert(not got.reply.to_a.include?("g".bytes[0]), "an expired key is never picked")
 end
 
 # COPY keeps the source and its deadline; an existing target stops it unless
@@ -167,7 +165,7 @@ def test_copy() -> Result[Void]
   ])
 
   want = want.concat([":10\r\n", "$-1\r\n"])
-  return Test.eq(got.reply.to_a, want.join("").bytes.to_a)
+  Test.eq(got.reply.to_a, want.join("").bytes.to_a)
 end
 
 # MOVE takes the key and its deadline to another database, and answers 0 when
@@ -207,7 +205,7 @@ def test_move() -> Result[Void]
   int_range = "-ERR value is out of range, value must between -2147483648 and 2147483647\r\n"
   want = want.concat(["-ERR value is not an integer or out of range\r\n", int_range, int_range])
   want = want.concat([":1\r\n", ":1\r\n", "+OK\r\n", bulk("3")])
-  return Test.eq(got.reply.to_a, want.join("").bytes.to_a)
+  Test.eq(got.reply.to_a, want.join("").bytes.to_a)
 end
 
 # SWAPDB swaps the data, deadlines included, and not the clients' selected
@@ -238,7 +236,7 @@ def test_swapdb() -> Result[Void]
   want = want.concat(["-ERR invalid first DB index\r\n", "-ERR invalid second DB index\r\n", range])
   want = want.concat(["-ERR invalid second DB index\r\n", range])
   want = want.concat(["-ERR invalid second DB index\r\n", "-ERR invalid first DB index\r\n"])
-  return Test.eq(got.reply.to_a, want.join("").bytes.to_a)
+  Test.eq(got.reply.to_a, want.join("").bytes.to_a)
 end
 
 # The pick of RANDOMKEY uses the high bits of the 62-bit number, so an index past
@@ -246,5 +244,5 @@ end
 def test_random_pick_reaches_large_databases() -> Result[Void]
   try Test.eq(Keys.pick_index(40_000 * 65_536, 100_000), 40_000)
   try Test.eq(Keys.pick_index(2_305_843_009_213_693_951, 7), (2_305_843_009_213_693_951 / 65_536) % 7)
-  return Test.assert(Keys.pick_index(2_305_843_009_213_693_951, 1_000_000) > 32_768, "a wide pick")
+  Test.assert(Keys.pick_index(2_305_843_009_213_693_951, 1_000_000) > 32_768, "a wide pick")
 end

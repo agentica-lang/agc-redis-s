@@ -14,26 +14,20 @@ export def execute(table: Map[String, Command], name: Bytes, call: Call) -> Outc
   # Latin-1 maps every byte to a character, so this never fails.
   lower = Args.lower(name)
   # `client|id` is the key of a subcommand, never a command of its own.
-  if lower.include?("|")
-    return unknown(name, call)
-  end
+  return unknown(name, call) if lower.include?("|")
 
   case table.get(lower)
-    none -> return unknown(name, call)
-    some(command) -> return run(command, table, call.with(name: lower))
+    none -> unknown(name, call)
+    some(command) -> run(command, table, call.with(name: lower))
   end
 end
 
 def run(command: Command, table: Map[String, Command], call: Call) -> Outcome
-  if bad_arity?(command.arity, call.args.size + 1)
-    return wrong_arity(call)
-  end
+  return wrong_arity(call) if bad_arity?(command.arity, call.args.size + 1)
 
-  if command.container and not call.args.empty?
-    return subcommand(command, table, call)
-  end
+  return subcommand(command, table, call) if command.container and not call.args.empty?
 
-  return command.handler(call)
+  command.handler(call)
 end
 
 # Called with at least one argument. The subcommand's arity counts
@@ -49,23 +43,19 @@ def subcommand(container: Command, table: Map[String, Command], call: Call) -> O
         "'. Try #{container.name.upcase} HELP.".bytes,
       ])
 
-      return fail_bytes(call, text)
+      fail_bytes(call, text)
     some(sub) ->
       inner = call.with(name: key, args: call.args.drop(1))
-      if bad_arity?(sub.arity, call.args.size + 1)
-        return wrong_arity(inner)
-      end
+      return wrong_arity(inner) if bad_arity?(sub.arity, call.args.size + 1)
 
-      return sub.handler(inner)
+      sub.handler(inner)
   end
 end
 
 def bad_arity?(arity: Int, count: Int) -> Bool
-  if arity >= 0
-    return count != arity
-  end
+  return count != arity if arity >= 0
 
-  return count < -arity
+  count < -arity
 end
 
 # The error is built from bytes: no decode, so no byte changes on the way.
@@ -77,7 +67,7 @@ def unknown(name: Bytes, call: Call) -> Outcome
     shown_args(call.args),
   ])
 
-  return fail_bytes(call, text)
+  fail_bytes(call, text)
 end
 
 # Each argument as 'arg ', until 128 bytes are shown; the last one is cut to fit.
@@ -85,14 +75,12 @@ def shown_args(args: List[Bytes]) -> Bytes
   parts: List[Bytes] = []
   shown = 0
   for arg in args
-    if shown >= SHOWN_BYTES
-      break
-    end
+    break if shown >= SHOWN_BYTES
 
     part = Bytes.concat(["'".bytes, arg.take(SHOWN_BYTES - shown), "' ".bytes])
     parts = parts.push(part)
     shown += part.size
   end
 
-  return Bytes.concat(parts)
+  Bytes.concat(parts)
 end

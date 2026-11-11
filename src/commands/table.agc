@@ -64,5 +64,5 @@ export def build() -> Map[String, Command]
       .concat(SetAlgebra.commands())
   )
 
-  return rows.reduce({}) do |table, row| table.put(row.name, row) end
+  rows.reduce({}) do |table, row| table.put(row.name, row) end
 end

@@ -8,9 +8,7 @@ export INT_MAX = 9_223_372_036_854_775_807
 ## `+`, no space, no leading zero (`0` alone is fine, `-0` is not), and it must
 ## fit in 64 bits. `none` otherwise.
 export def parse(text: Bytes) -> Optional[Int]
-  if text.empty?
-    return none
-  end
+  return none if text.empty?
 
   negative = text[0] == 45
   digits = text
@@ -18,32 +16,22 @@ export def parse(text: Bytes) -> Optional[Int]
     digits = text.drop(1)
   end
 
-  if digits.empty? or (digits[0] == 48 and (digits.size > 1 or negative))
-    return none
-  end
+  return none if digits.empty? or (digits[0] == 48 and (digits.size > 1 or negative))
 
   # Summed as a negative number: its range holds the magnitude of INT_MIN.
   total = 0
   for byte in digits
-    if byte < 48 or byte > 57
-      return none
-    end
+    return none if byte < 48 or byte > 57
 
     digit = byte - 48
-    if total < MIN_DIV_10 or (total == MIN_DIV_10 and digit > 8)
-      return none
-    end
+    return none if total < MIN_DIV_10 or (total == MIN_DIV_10 and digit > 8)
 
     total = total * 10 - digit
   end
 
-  if negative
-    return some(total)
-  end
+  return some(total) if negative
 
-  if total == INT_MIN
-    return none
-  end
+  return none if total == INT_MIN
 
-  return some(-total)
+  some(-total)
 end

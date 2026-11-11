@@ -23,9 +23,7 @@ DASH = 45
 
 ## True when `pattern` matches the whole of `text`.
 export def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
-  if text.empty?
-    return pattern.empty?
-  end
+  return pattern.empty? if text.empty?
 
   p = 0
   t = 0
@@ -37,9 +35,7 @@ export def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
         p += 1
       end
 
-      if p == pattern.size
-        return true
-      end
+      return true if p == pattern.size
 
       retry_p = p
       retry_t = t
@@ -66,20 +62,16 @@ export def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
     p += 1
   end
 
-  return p == pattern.size
+  p == pattern.size
 end
 
 # Matches the element that starts at `p` (not a `*`) against one byte: the
 # index after the element, or -1 when it does not match.
 def step(pattern: Bytes, p: Int, c: Int, nocase: Bool) -> Int
   first = pattern[p]
-  if first == QUESTION
-    return p + 1
-  end
+  return p + 1 if first == QUESTION
 
-  if first == OPEN
-    return bracket(pattern, p + 1, c, nocase)
-  end
+  return bracket(pattern, p + 1, c, nocase) if first == OPEN
 
   literal = first
   after = p + 1
@@ -88,11 +80,9 @@ def step(pattern: Bytes, p: Int, c: Int, nocase: Bool) -> Int
     after = p + 2
   end
 
-  if same?(literal, c, nocase)
-    return after
-  end
+  return after if same?(literal, c, nocase)
 
-  return -1
+  -1
 end
 
 # The set `[...]` whose first byte after the `[` is at `q`.
@@ -107,9 +97,7 @@ def bracket(pattern: Bytes, q: Int, c: Int, nocase: Bool) -> Int
   found = false
   while true
     left = size - at
-    if left == 0
-      return finish_set(found, negate, size)
-    end
+    return finish_set(found, negate, size) if left == 0
 
     if pattern[at] == BACKSLASH and left >= 2
       at += 1
@@ -126,15 +114,13 @@ def bracket(pattern: Bytes, q: Int, c: Int, nocase: Bool) -> Int
     at += 1
   end
 
-  return -1
+  -1
 end
 
 def finish_set(found: Bool, negate: Bool, after: Int) -> Int
-  if found != negate
-    return after
-  end
+  return after if found != negate
 
-  return -1
+  -1
 end
 
 def in_range?(a: Int, b: Int, c: Int, nocase: Bool) -> Bool
@@ -145,26 +131,20 @@ def in_range?(a: Int, b: Int, c: Int, nocase: Bool) -> Bool
     high = a
   end
 
-  if nocase
-    return lower(c) >= lower(low) and lower(c) <= lower(high)
-  end
+  return lower(c) >= lower(low) and lower(c) <= lower(high) if nocase
 
-  return c >= low and c <= high
+  c >= low and c <= high
 end
 
 def same?(a: Int, b: Int, nocase: Bool) -> Bool
-  if nocase
-    return lower(a) == lower(b)
-  end
+  return lower(a) == lower(b) if nocase
 
-  return a == b
+  a == b
 end
 
 # ASCII only, as `tolower` in the C locale.
 def lower(byte: Int) -> Int
-  if byte >= 65 and byte <= 90
-    return byte + 32
-  end
+  return byte + 32 if byte >= 65 and byte <= 90
 
-  return byte
+  byte
 end

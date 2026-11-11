@@ -30,9 +30,7 @@ export struct Fed
 end
 
 ## A stream with nothing held.
-export def start() -> Stream
-  return Stream(chunks: [], have: 0, partial: Partial())
-end
+export def start() -> Stream = Stream(chunks: [], have: 0, partial: Partial())
 
 ## Adds a chunk and cuts every whole request out of what is held.
 export def feed(stream: Stream, chunk: Bytes) -> Fed
@@ -42,27 +40,23 @@ export def feed(stream: Stream, chunk: Bytes) -> Fed
     return Fed(stream: Stream(chunks: chunks, have: have, partial: stream.partial), requests: [], ending: Ending.Open)
   end
 
-  return cut(Bytes.concat(chunks), stream.partial)
+  cut(Bytes.concat(chunks), stream.partial)
 end
 
 # Nothing can change yet: the request needs more bytes, or only a LF is missing
 # and this chunk has none (a line is refused at MAX_LINE, which needs a parse).
 def waiting?(partial: Partial, have: Int, chunk: Bytes) -> Bool
-  if have < partial.need
-    return true
-  end
+  return true if have < partial.need
 
-  return partial.line and have <= Reader.MAX_LINE and not has_lf?(chunk)
+  partial.line and have <= Reader.MAX_LINE and not has_lf?(chunk)
 end
 
 def has_lf?(chunk: Bytes) -> Bool
   for byte in chunk
-    if byte == LF
-      return true
-    end
+    return true if byte == LF
   end
 
-  return false
+  false
 end
 
 def cut(buf: Bytes, resume: Partial) -> Fed
@@ -80,7 +74,7 @@ def cut(buf: Bytes, resume: Partial) -> Fed
     end
   end
 
-  return Fed(stream: start(), requests: requests, ending: Ending.Open)
+  Fed(stream: start(), requests: requests, ending: Ending.Open)
 end
 
 # Only what the reader has not consumed stays; the offsets restart at 0.
@@ -90,9 +84,7 @@ def keep(buf: Bytes, partial: Partial) -> Stream
     rest = buf.drop(partial.at)
   end
 
-  if rest.empty?
-    return Stream(chunks: [], have: 0, partial: partial.with(at: 0))
-  end
+  return Stream(chunks: [], have: 0, partial: partial.with(at: 0)) if rest.empty?
 
-  return Stream(chunks: [rest], have: rest.size, partial: partial.with(at: 0))
+  Stream(chunks: [rest], have: rest.size, partial: partial.with(at: 0))
 end

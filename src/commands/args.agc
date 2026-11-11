@@ -11,50 +11,38 @@ export MAX_ITEMS = 1_300_000
 
 ## The word as lowercase text, for matching option names without case. Latin-1
 ## maps every byte to a character, so this never fails.
-export def lower(word: Bytes) -> String
-  return word.decode("latin-1").unwrap!.downcase
-end
+export def lower(word: Bytes) -> String = word.decode("latin-1").unwrap!.downcase
 
 ## What Redis allows in a client name or a library name: printable ASCII
 ## without space. Its check is a C loop, so it stops at the first NUL byte.
 export def plain_word?(word: Bytes) -> Bool
   for byte in word
-    if byte == 0
-      return true
-    end
+    return true if byte == 0
 
-    if byte < 33 or byte > 126
-      return false
-    end
+    return false if byte < 33 or byte > 126
   end
 
-  return true
+  true
 end
 
 ## An attribute a client set: the empty text means "not set", as in Redis.
 export def present(word: Bytes) -> Optional[Bytes]
-  if word.empty?
-    return none
-  end
+  return none if word.empty?
 
-  return some(word)
+  some(word)
 end
 
 ## An attribute as the text of CLIENT LIST: empty when not set.
-export def shown(word: Optional[Bytes]) -> Bytes
-  return word.unwrap_or("".bytes)
-end
+export def shown(word: Optional[Bytes]) -> Bytes = word.unwrap_or("".bytes)
 
 ## The time argument of SET, GETEX, SETEX and PSETEX as an absolute deadline in
 ## ms (Redis's `getExpireMillisecondsOrReply`): it must be a positive integer.
 ## `relative` (EX, PX) adds the clock. The error is the whole reply text.
 export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, command: String) -> Result[Int]
   case Integer.parse(text)
-    none -> return error(Errors.NOT_INT)
+    none -> error(Errors.NOT_INT)
     some(value) ->
-      if value <= 0 or (seconds and value > Integer.INT_MAX / 1000)
-        return bad_expire(command)
-      end
+      return bad_expire(command) if value <= 0 or (seconds and value > Integer.INT_MAX / 1000)
 
       ms = value
       if seconds
@@ -62,15 +50,11 @@ export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, co
       end
 
       # The sum is compared first: an Int that overflows halts.
-      if relative and ms > Integer.INT_MAX - now_ms
-        return bad_expire(command)
-      end
+      return bad_expire(command) if relative and ms > Integer.INT_MAX - now_ms
 
-      if relative
-        return ok(ms + now_ms)
-      end
+      return ok(ms + now_ms) if relative
 
-      return ok(ms)
+      ok(ms)
   end
 end
 
@@ -79,22 +63,18 @@ end
 ## the AT forms.
 export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String) -> Result[Int]
   case Integer.parse(text)
-    none -> return error(Errors.NOT_INT)
+    none -> error(Errors.NOT_INT)
     some(value) ->
       ms = value
       if seconds
-        if value > Integer.INT_MAX / 1000 or value < Integer.INT_MIN / 1000
-          return bad_expire(command)
-        end
+        return bad_expire(command) if value > Integer.INT_MAX / 1000 or value < Integer.INT_MIN / 1000
 
         ms = value * 1000
       end
 
-      if ms > Integer.INT_MAX - base_ms
-        return bad_expire(command)
-      end
+      return bad_expire(command) if ms > Integer.INT_MAX - base_ms
 
-      return ok(ms + base_ms)
+      ok(ms + base_ms)
   end
 end
 
@@ -102,13 +82,11 @@ end
 ## the same `message` answers a word that is no number and a negative one.
 export def positive(text: Bytes, message: String) -> Result[Int]
   case Integer.parse(text)
-    none -> return error(message)
+    none -> error(message)
     some(value) ->
-      if value < 0
-        return error(message)
-      end
+      return error(message) if value < 0
 
-      return ok(value)
+      ok(value)
   end
 end
 
@@ -116,16 +94,12 @@ end
 ## same `message` answers a word and a number below 1.
 export def at_least_one(text: Bytes, message: String) -> Result[Int]
   case Integer.parse(text)
-    none -> return error(message)
+    none -> error(message)
     some(value) ->
-      if value < 1
-        return error(message)
-      end
+      return error(message) if value < 1
 
-      return ok(value)
+      ok(value)
   end
 end
 
-def bad_expire(command: String) -> Result[Int]
-  return error("ERR invalid expire time in '#{command}' command")
-end
+def bad_expire(command: String) -> Result[Int] = error("ERR invalid expire time in '#{command}' command")

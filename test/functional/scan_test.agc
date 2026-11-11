@@ -5,12 +5,12 @@ import Scan from "../../src/store/scan"
 import {exchange, talk, words} from "../support"
 
 def ask(databases: Databases, request: List[String]) -> String
-  return exchange(databases, words(request), 6).reply.decode("latin-1").unwrap!
+  exchange(databases, words(request), 6).reply.decode("latin-1").unwrap!
 end
 
 def page(cursor: String, keys: List[String]) -> String
   items = keys.map do |key| "$#{key.bytesize}\r\n#{key}\r\n" end
-  return "*2\r\n$#{cursor.size}\r\n#{cursor}\r\n*#{keys.size}\r\n#{items.join("")}"
+  "*2\r\n$#{cursor.size}\r\n#{cursor}\r\n*#{keys.size}\r\n#{items.join("")}"
 end
 
 # One page with every live key (cursor 0, in the order of the hash): an expired
@@ -44,7 +44,7 @@ def test_scan_filters_and_options() -> Result[Void]
   try Test.eq(ask(db, ["SCAN", "0", "COUNT", "0"]), syntax)
   try Test.eq(ask(db, ["SCAN", "0", "COUNT", "x"]), "-ERR value is not an integer or out of range\r\n")
   try Test.eq(ask(db, ["SCAN", "0", "COUNT"]), syntax)
-  return Test.eq(ask(db, ["SCAN", "0", "FOO", "1"]), syntax)
+  Test.eq(ask(db, ["SCAN", "0", "FOO", "1"]), syntax)
 end
 
 # COUNT 1 gives one key and the hash of the next as the cursor; going on from it
@@ -54,5 +54,5 @@ def test_scan_pages_with_a_cursor() -> Result[Void]
   names = ["a", "b", "c"].sort_by do |name| Scan.hash(name.bytes) end
   next = "#{Scan.hash(names[1].bytes)}"
   try Test.eq(ask(first.databases, ["SCAN", "0", "COUNT", "1"]), page(next, [names[0]]))
-  return Test.eq(ask(first.databases, ["SCAN", next, "COUNT", "5"]), page("0", [names[1], names[2]]))
+  Test.eq(ask(first.databases, ["SCAN", next, "COUNT", "5"]), page("0", [names[1], names[2]]))
 end

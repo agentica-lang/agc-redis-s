@@ -26,7 +26,7 @@ def case_gen() -> Prop.Gen[Case]
   blank = Prop.list(Prop.one_of(BLANKS), 4)
   filler = Prop.pair(blank, Prop.one_of(TAILS))
   sizes = Prop.pair(filler, Prop.list(Prop.int(1, 12), 6))
-  return Prop.map(Prop.pair(shape, sizes)) do |p|
+  Prop.map(Prop.pair(shape, sizes)) do |p|
     Case(
       requests: p.first.first,
       forms: p.first.second,
@@ -40,42 +40,32 @@ end
 # A plain inline line has no quotes, so its words are letters: that is the
 # path of the reader that does not look for quotes.
 def letters(arg: List[Int]) -> List[Int]
-  if arg.empty?
-    return [97]
-  end
+  return [97] if arg.empty?
 
-  return arg.map do |b| 97 + b % 26 end
+  arg.map do |b| 97 + b % 26 end
 end
 
 def form_of(c: Case, i: Int) -> Int
-  if i < c.forms.size
-    return c.forms[i]
-  end
+  return c.forms[i] if i < c.forms.size
 
-  return ARRAY
+  ARRAY
 end
 
 # The arguments the reader must give back for request `i`.
 def expected(c: Case, i: Int) -> List[List[Int]]
-  if form_of(c, i) > QUOTED
-    return c.requests[i].map do |a| letters(a) end
-  end
+  return c.requests[i].map do |a| letters(a) end if form_of(c, i) > QUOTED
 
-  return c.requests[i]
+  c.requests[i]
 end
 
 def wire(c: Case, i: Int) -> Bytes
   argv = expected(c, i).map do |xs| to_bytes(xs) end
   form = form_of(c, i)
-  if form == ARRAY
-    return request(argv)
-  end
+  return request(argv) if form == ARRAY
 
-  if form == QUOTED
-    return Bytes.concat(argv.map do |a| quote(a) + " ".bytes end) + "\r\n".bytes
-  end
+  return Bytes.concat(argv.map do |a| quote(a) + " ".bytes end) + "\r\n".bytes if form == QUOTED
 
-  return Bytes.concat(argv.map do |a| a + " ".bytes end) + "\r\n".bytes
+  Bytes.concat(argv.map do |a| a + " ".bytes end) + "\r\n".bytes
 end
 
 def stream_of(c: Case) -> Bytes
@@ -88,7 +78,7 @@ def stream_of(c: Case) -> Bytes
     parts = parts.push(wire(c, i))
   end
 
-  return Bytes.concat(parts.push(c.tail.bytes))
+  Bytes.concat(parts.push(c.tail.bytes))
 end
 
 # The requests and the ending when the bytes arrive in chunks of the given sizes
@@ -114,7 +104,7 @@ def feed_in_chunks(bytes: Bytes, sizes: List[Int]) -> List[String]
   end
 
   ints = requests.map do |r| r.map do |a| a.to_a end end
-  return ["#{ints}", "#{ending}"]
+  ["#{ints}", "#{ending}"]
 end
 
 # A stream of arrays, quoted and plain inline lines, with blank lines between,
@@ -122,7 +112,7 @@ end
 # gives the generated requests, and any cut of it gives the same as the whole.
 # 50 runs: the step budget of a test ends between 100 and 150.
 def test_chunks_give_the_same_requests() -> Result[Void]
-  return Prop.check(case_gen(), Prop.Config(runs: 50)) do |c|
+  Prop.check(case_gen(), Prop.Config(runs: 50)) do |c|
     bytes = stream_of(c)
     whole = feed_in_chunks(bytes, [bytes.size + 1])
     sent = c.requests.size

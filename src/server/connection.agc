@@ -38,10 +38,7 @@ export def gone(inbox: Channel[Message], id: Int) -> Void
   while true
     case inbox.send(Message.Gone(id), INBOX_SEND_MS)
       ok(_) -> return
-      error(_) ->
-        if inbox.closed?
-          return
-        end
+      error(_) -> return if inbox.closed?
     end
   end
 end
@@ -69,9 +66,7 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
     case Dock.recv(conn, READ_BYTES)
       error(_) -> return none
       ok(chunk) ->
-        if chunk.empty?
-          return some("".bytes)
-        end
+        return some("".bytes) if chunk.empty?
 
         case drain(conn, inbox, Stream.feed(stream, chunk))
           Drained.More(next) -> stream = next
@@ -80,7 +75,7 @@ def read_loop(conn: Dock.Conn, inbox: Channel[Message]) -> Optional[Bytes]
     end
   end
 
-  return none
+  none
 end
 
 # Sends every whole request the chunk completed, in order, as one message.
@@ -94,8 +89,8 @@ def drain(conn: Dock.Conn, inbox: Channel[Message], fed: Fed) -> Drained
   end
 
   case fed.ending
-    Ending.Open -> return Drained.More(fed.stream)
-    Ending.Invalid(text) -> return Drained.Broken(Writer.protocol_error(text))
-    Ending.Overflow -> return Drained.Broken("".bytes)
+    Ending.Open -> Drained.More(fed.stream)
+    Ending.Invalid(text) -> Drained.Broken(Writer.protocol_error(text))
+    Ending.Overflow -> Drained.Broken("".bytes)
   end
 end

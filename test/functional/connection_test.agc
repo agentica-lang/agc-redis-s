@@ -17,7 +17,7 @@ def test_pipeline_and_quit() -> Result[Void]
   expected = Bytes.concat(["+PONG\r\n+PONG\r\n$2\r\nhi\r\n$4\r\n".bytes, data, "\r\n+OK\r\n".bytes])
   result = exchange(fresh(), sent)
   try Test.eq(result.reply, expected)
-  return Test.assert(result.closed, "QUIT closes the connection")
+  Test.assert(result.closed, "QUIT closes the connection")
 end
 
 # Client bytes echoed in an error must not forge a reply (CR LF) or change (0xff).
@@ -27,20 +27,20 @@ def test_errors_keep_the_stream_in_step() -> Result[Void]
   prefix = "-ERR unknown command 'FOO', with args beginning with: 'a  +OK".bytes
   arity = "' \r\n-ERR wrong number of arguments for 'ping' command\r\n+PONG\r\n".bytes
   expected = prefix + Bytes.from_list([255]).unwrap! + arity
-  return Test.eq(exchange(fresh(), sent).reply, expected)
+  Test.eq(exchange(fresh(), sent).reply, expected)
 end
 
 # A batch of one reply takes its own path in `Requests.run_all`.
 def test_a_lone_quit_closes() -> Result[Void]
   result = exchange(fresh(), words(["QUIT"]))
   try Test.eq(result.reply, "+OK\r\n".bytes)
-  return Test.assert(result.closed, "a lone QUIT closes the connection")
+  Test.assert(result.closed, "a lone QUIT closes the connection")
 end
 
 def test_protocol_error_closes() -> Result[Void]
   result = exchange(fresh(), "*x\r\n".bytes)
   try Test.eq(result.reply, "-ERR Protocol error: invalid multibulk length\r\n".bytes)
-  return Test.assert(result.closed, "a protocol error closes the connection")
+  Test.assert(result.closed, "a protocol error closes the connection")
 end
 
 # The reply path of inline quoting: a quoted command is answered, and bad quotes
@@ -48,7 +48,7 @@ end
 def test_inline_quotes_and_their_errors() -> Result[Void]
   result = exchange(fresh(), "ECHO \"a b\\x41\"\r\nPING \"x\r\nPING\r\n".bytes)
   try Test.eq(result.reply, "$4\r\na bA\r\n-ERR Protocol error: unbalanced quotes in request\r\n".bytes)
-  return Test.assert(result.closed, "unbalanced quotes close the connection")
+  Test.assert(result.closed, "unbalanced quotes close the connection")
 end
 
 def greeting(id: Int) -> String
@@ -56,7 +56,7 @@ def greeting(id: Int) -> String
     "*14\r\n$6\r\nserver\r\n$5\r\nredis\r\n$7\r\nversion\r\n$6\r\n7.2.17\r\n$5\r\nproto\r\n:2\r\n$2\r\nid\r\n:#{id}\r\n"
   )
 
-  return head + "$4\r\nmode\r\n$10\r\nstandalone\r\n$4\r\nrole\r\n$6\r\nmaster\r\n$7\r\nmodules\r\n*0\r\n"
+  head + "$4\r\nmode\r\n$10\r\nstandalone\r\n$4\r\nrole\r\n$6\r\nmaster\r\n$7\r\nmodules\r\n*0\r\n"
 end
 
 # HELLO 2 answers the greeting; 3 and the bad forms get Redis's errors; the
@@ -83,7 +83,7 @@ def test_hello() -> Result[Void]
     "-ERR Syntax error in HELLO option 'SETNAME'\r\n",
   ].join("")
 
-  return Test.eq(bad.reply, expected.bytes)
+  Test.eq(bad.reply, expected.bytes)
 end
 
 # SELECT moves the session, and its errors are the ones of Redis for a number
@@ -102,5 +102,5 @@ def test_select() -> Result[Void]
   ].join("")
 
   try Test.eq(bad.reply, expected.bytes)
-  return Test.eq(bad.session.db, 0)
+  Test.eq(bad.session.db, 0)
 end

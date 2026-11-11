@@ -36,12 +36,10 @@ end
 
 # The requests at the clock `now`, on the databases a request before left.
 def at(databases: Databases, now: Int, requests: List[List[String]]) -> Exchange
-  return exchange(databases, Bytes.concat(requests.map do |r| words(r) end), now)
+  exchange(databases, Bytes.concat(requests.map do |r| words(r) end), now)
 end
 
-def replies(list: List[String]) -> Bytes
-  return list.join("").bytes
-end
+def replies(list: List[String]) -> Bytes = list.join("").bytes
 
 # SET EX, PX, EXAT and PXAT, and what TTL, PTTL and EXPIRETIME say. The key
 # lives up to and including its deadline and is gone one ms after it. The
@@ -76,7 +74,7 @@ def test_set_time_options_and_ttl() -> Result[Void]
   edge = at(first.databases, 2500, [["GET", "b"], ["TTL", "b"]])
   try Test.eq(edge.reply.to_a, "$1\r\n1\r\n:0\r\n".bytes.to_a)
   gone = at(first.databases, 2501, [["GET", "b"], ["EXISTS", "b"], ["TTL", "b"], ["TYPE", "b"], ["TYPE", "a"]])
-  return Test.eq(gone.reply.to_a, "$-1\r\n:0\r\n:-2\r\n+none\r\n+string\r\n".bytes.to_a)
+  Test.eq(gone.reply.to_a, "$-1\r\n:0\r\n:-2\r\n+none\r\n+string\r\n".bytes.to_a)
 end
 
 # The texts and the rules of the time words: a positive integer that does not
@@ -109,7 +107,7 @@ def test_set_time_option_errors() -> Result[Void]
   syntax = "-ERR syntax error\r\n"
   want = [invalid, invalid, NOT_INT, invalid, invalid, "+OK\r\n", syntax, syntax, syntax, syntax, syntax]
   want = want.concat(["+OK\r\n", ":5000\r\n", "+OK\r\n", "$-1\r\n"])
-  return Test.eq(got.reply.to_a, replies(want).to_a)
+  Test.eq(got.reply.to_a, replies(want).to_a)
 end
 
 # What keeps the deadline of a key (INCR, INCRBYFLOAT, APPEND, SETRANGE, SET
@@ -158,7 +156,7 @@ def test_writes_keep_or_drop_the_deadline() -> Result[Void]
 
   stale = at(fresh(), 0, [["SET", "k", "5", "PX", "10"], ["SET", "s", "ab", "PX", "10"]])
   later = at(stale.databases, 11, [["INCR", "k"], ["TTL", "k"], ["APPEND", "s", "c"], ["TTL", "s"], ["GET", "s"]])
-  return Test.eq(later.reply.to_a, ":1\r\n:-1\r\n:1\r\n:-1\r\n$1\r\nc\r\n".bytes.to_a)
+  Test.eq(later.reply.to_a, ":1\r\n:-1\r\n:1\r\n:-1\r\n$1\r\nc\r\n".bytes.to_a)
 end
 
 # GETEX answers nil for a missing key before it reads the time; with a time
@@ -203,7 +201,7 @@ def test_getex_setex_psetex() -> Result[Void]
   ])
 
   want = want.concat(["+OK\r\n", ":1500\r\n", NOT_INT])
-  return Test.eq(got.reply.to_a, replies(want).to_a)
+  Test.eq(got.reply.to_a, replies(want).to_a)
 end
 
 # EXPIRE, PEXPIRE, EXPIREAT and PEXPIREAT with NX, XX, GT and LT: a key with no
@@ -249,7 +247,7 @@ def test_expire_family() -> Result[Void]
   ])
 
   want = want.concat([":1\r\n", "$-1\r\n"])
-  return Test.eq(got.reply.to_a, replies(want).to_a)
+  Test.eq(got.reply.to_a, replies(want).to_a)
 end
 
 # The error texts of the EXPIRE family and what they are tested before: the
@@ -286,7 +284,7 @@ def test_expire_errors_and_past_times() -> Result[Void]
   want = want.concat([conflict, NOT_INT, "+OK\r\n", "#{bad}expire' command\r\n", "#{bad}expireat' command\r\n"])
   want = want.concat(["#{bad}pexpire' command\r\n", ":1\r\n", ":9223372036854774807\r\n"])
   want = want.concat([":1\r\n", ":0\r\n", ":0\r\n"])
-  return Test.eq(got.reply.to_a, replies(want).to_a)
+  Test.eq(got.reply.to_a, replies(want).to_a)
 end
 
 # INFO counts the keys with a deadline, swept or not.
@@ -296,46 +294,36 @@ def test_info_counts_deadlines() -> Result[Void]
   info = "# Keyspace\r\ndb0:keys=2,expires=1,avg_ttl=0\r\n"
   shown = "$#{info.size}\r\n#{info}\r\n"
   try Test.eq(got.reply.to_a, "+OK\r\n+OK\r\n#{shown}".bytes.to_a)
-  return Test.eq(later.reply.to_a, shown.bytes.to_a)
+  Test.eq(later.reply.to_a, shown.bytes.to_a)
 end
 
-def bulk(data: List[Int]) -> Bytes
-  return Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
-end
+def bulk(data: List[Int]) -> Bytes = Bytes.concat(["$#{data.size}\r\n".bytes, to_bytes(data), "\r\n".bytes])
 
 def present(entry: Optional[Entry]) -> Int
-  if entry.some?
-    return 1
-  end
+  return 1 if entry.some?
 
-  return 0
+  0
 end
 
 def present_field(fields: Map[Int, List[Int]], field: Int) -> Int
-  if fields.has_key?(field)
-    return 1
-  end
+  return 1 if fields.has_key?(field)
 
-  return 0
+  0
 end
 
-def whole(n: Int) -> Bytes
-  return ":#{n}\r\n".bytes
-end
+def whole(n: Int) -> Bytes = ":#{n}\r\n".bytes
 
 # The entry of a key that is not expired at `now`.
 def live(model: Map[Int, Entry], key: Int, now: Int) -> Optional[Entry]
   case model.get(key)
-    none -> return none
+    none -> none
     some(entry) ->
       case entry.due
-        none -> return some(entry)
+        none -> some(entry)
         some(due) ->
-          if now > due
-            return none
-          end
+          return none if now > due
 
-          return some(entry)
+          some(entry)
       end
   end
 end
@@ -380,15 +368,13 @@ def argv_of(op: List[Int]) -> List[Bytes]
   end
 end
 
-def option_of(n: Int) -> Bytes
-  return ["NX".bytes, "XX".bytes, "GT".bytes, "LT".bytes][n % 4]
-end
+def option_of(n: Int) -> Bytes = ["NX".bytes, "XX".bytes, "GT".bytes, "LT".bytes][n % 4]
 
 # Whether NX, XX, GT or LT lets a key with the deadline `current` take `when`;
 # a key with none counts as an infinite one.
 def allowed?(option: Int, current: Optional[Int], when: Int) -> Bool
   case current
-    none -> return option % 4 == 0 or option % 4 == 3
+    none -> option % 4 == 0 or option % 4 == 3
     some(due) -> return case option % 4
         0 -> false
         1 -> true
@@ -399,17 +385,13 @@ def allowed?(option: Int, current: Optional[Int], when: Int) -> Bool
 end
 
 def keyspace_text(state: Map[Int, Entry]) -> Bytes
-  if state.empty?
-    return bulk_text("# Keyspace\r\n")
-  end
+  return bulk_text("# Keyspace\r\n") if state.empty?
 
   expiring = state.values.select do |entry| entry.due.some? end
-  return bulk_text("# Keyspace\r\ndb0:keys=#{state.size},expires=#{expiring.size},avg_ttl=0\r\n")
+  bulk_text("# Keyspace\r\ndb0:keys=#{state.size},expires=#{expiring.size},avg_ttl=0\r\n")
 end
 
-def bulk_text(text: String) -> Bytes
-  return "$#{text.size}\r\n#{text}\r\n".bytes
-end
+def bulk_text(text: String) -> Bytes = "$#{text.size}\r\n#{text}\r\n".bytes
 
 def model_step(model: Model, op: List[Int], now: Int) -> Model
   xs = op.concat([0, 0, 0, 0])
@@ -596,7 +578,7 @@ def model_step(model: Model, op: List[Int], now: Int) -> Model
       answer = whole(present(old))
   end
 
-  return Model(state: state, replies: model.replies.push(answer))
+  Model(state: state, replies: model.replies.push(answer))
 end
 
 # LPOP or RPOP of one element, or of up to `count` with a count (an array from
@@ -613,16 +595,12 @@ def popped(
   counted: Bool,
 ) -> Popped
   if old.none?
-    if counted
-      return Popped(state: state, answer: "*-1\r\n".bytes)
-    end
+    return Popped(state: state, answer: "*-1\r\n".bytes) if counted
 
     return Popped(state: state, answer: "$-1\r\n".bytes)
   end
 
-  if held.items.none?
-    return Popped(state: state, answer: WRONGTYPE)
-  end
+  return Popped(state: state, answer: WRONGTYPE) if held.items.none?
 
   items = held.items.unwrap_or([])
   taken = items.size
@@ -642,11 +620,9 @@ def popped(
     answer = Bytes.concat(["*#{picked.size}\r\n".bytes].concat(picked.map do |one| bulk(one) end))
   end
 
-  if rest.empty?
-    return Popped(state: state.delete(key), answer: answer)
-  end
+  return Popped(state: state.delete(key), answer: answer) if rest.empty?
 
-  return Popped(state: state.put(key, held.with(items: some(rest))), answer: answer)
+  Popped(state: state.put(key, held.with(items: some(rest))), answer: answer)
 end
 
 # LSET keeps the deadline: no such key, WRONGTYPE, or an index outside the list
@@ -659,13 +635,9 @@ def assigned(
   index: Int,
   value: List[Int],
 ) -> Popped
-  if old.none?
-    return Popped(state: state, answer: "-ERR no such key\r\n".bytes)
-  end
+  return Popped(state: state, answer: "-ERR no such key\r\n".bytes) if old.none?
 
-  if held.items.none?
-    return Popped(state: state, answer: WRONGTYPE)
-  end
+  return Popped(state: state, answer: WRONGTYPE) if held.items.none?
 
   items = held.items.unwrap_or([])
   position = index
@@ -673,27 +645,21 @@ def assigned(
     position = items.size + index
   end
 
-  if position < 0 or position >= items.size
-    return Popped(state: state, answer: "-ERR index out of range\r\n".bytes)
-  end
+  return Popped(state: state, answer: "-ERR index out of range\r\n".bytes) if position < 0 or position >= items.size
 
   changed = items.take(position).push(value).concat(items.drop(position + 1))
-  return Popped(state: state.put(key, held.with(items: some(changed))), answer: "+OK\r\n".bytes)
+  Popped(state: state.put(key, held.with(items: some(changed))), answer: "+OK\r\n".bytes)
 end
 
 # LTRIM 0 stop on a live list keeps the first stop + 1 elements (never none, so
 # the key stays) and its deadline; a missing key answers OK.
 def trimmed(state: Map[Int, Entry], key: Int, old: Optional[Entry], held: Entry, stop: Int) -> Popped
-  if old.some? and held.items.none?
-    return Popped(state: state, answer: WRONGTYPE)
-  end
+  return Popped(state: state, answer: WRONGTYPE) if old.some? and held.items.none?
 
-  if old.none?
-    return Popped(state: state, answer: "+OK\r\n".bytes)
-  end
+  return Popped(state: state, answer: "+OK\r\n".bytes) if old.none?
 
   items = held.items.unwrap_or([]).take(stop + 1)
-  return Popped(state: state.put(key, held.with(items: some(items))), answer: "+OK\r\n".bytes)
+  Popped(state: state.put(key, held.with(items: some(items))), answer: "+OK\r\n".bytes)
 end
 
 # What a sweep at `now` leaves: the keys that are not past their deadline.
@@ -706,7 +672,7 @@ def swept(state: Map[Int, Entry], now: Int) -> Map[Int, Entry]
     end
   end
 
-  return left
+  left
 end
 
 # The clock of each operation: it moves by 0 to 4 ms, so keys with a deadline
@@ -719,7 +685,7 @@ def clocks(ops: List[List[Int]]) -> List[Int]
     times = times.push(now)
   end
 
-  return times
+  times
 end
 
 # The server run with the sweep operations in place: an answer depends on one
@@ -738,7 +704,7 @@ def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: Li
     end
   end
 
-  return Bytes.concat(replies)
+  Bytes.concat(replies)
 end
 
 # HSET, HDEL, HLEN and TYPE join them: a hash keeps its deadline, goes with its
@@ -757,7 +723,7 @@ def test_deadlines_follow_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 8), 16)
-  return Prop.check(ops, Prop.Config(runs: 300)) do |list|
+  Prop.check(ops, Prop.Config(runs: 300)) do |list|
     times = clocks(list)
     start = Model(state: {}, replies: [])
     model = (0...list.size).to_a.reduce(start) do |acc, i| model_step(acc, list[i], times[i]) end
@@ -789,5 +755,5 @@ def test_a_deadline_near_the_largest_int_reads_back() -> Result[Void]
     ":9223372036854774500\r\n", "+OK\r\n", ":9223372036854776\r\n", "+OK\r\n", ":9223372036854775\r\n",
   ])
 
-  return Test.eq(got.reply.to_a, replies(want).to_a)
+  Test.eq(got.reply.to_a, replies(want).to_a)
 end

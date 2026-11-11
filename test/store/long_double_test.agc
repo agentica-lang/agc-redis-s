@@ -5,19 +5,19 @@ import Prop from "pkg/prop/prop"
 # refused by string2ld, "err" for a NaN or an infinity as the sum.
 def sum_text(a: String, b: String) -> String
   case LongDouble.parse(a.bytes)
-    none -> return "bad"
+    none -> "bad"
     some(x) ->
       case LongDouble.parse(b.bytes)
-        none -> return "bad"
-        some(y) -> return shown(LongDouble.add(x, y))
+        none -> "bad"
+        some(y) -> shown(LongDouble.add(x, y))
       end
   end
 end
 
 def shown(total: Optional[LongDouble.Ext]) -> String
   case total
-    none -> return "err"
-    some(z) -> return LongDouble.format(z).decode("latin-1").unwrap!
+    none -> "err"
+    some(z) -> LongDouble.format(z).decode("latin-1").unwrap!
   end
 end
 
@@ -59,7 +59,7 @@ def test_sums_as_the_x87_long_double() -> Result[Void]
     try Test.eq(sum_text(row[0], row[1]), row[2])
   end
 
-  return Test.eq(1, 1)
+  Test.eq(1, 1)
 end
 
 # The texts string2ld refuses: not a number, nan, an exponent without digits,
@@ -73,7 +73,7 @@ def test_refused_texts_and_sums() -> Result[Void]
     try Test.eq(sum_text(row[0], row[1]), "err")
   end
 
-  return Test.eq(1, 1)
+  Test.eq(1, 1)
 end
 
 # A short decimal comes back as typed, without its trailing zeros: below 10 the
@@ -82,7 +82,7 @@ end
 def test_short_decimals_round_trip() -> Result[Void]
   fractions = Prop.int(0, 999999)
   pairs = Prop.pair(Prop.int(0, 9), fractions)
-  return Prop.check(pairs, Prop.Config(runs: 60)) do |p|
+  Prop.check(pairs, Prop.Config(runs: 60)) do |p|
     fraction = "#{p.second + 1000000}".slice(1, 6)
     shown_back = sum_text("#{p.first}.#{fraction}", "0")
     Prop.eq(shown_back, canonical(p.first, fraction))
@@ -94,7 +94,7 @@ end
 # above (60 runs), a third of the lower.
 def test_whole_numbers_add_as_ints() -> Result[Void]
   numbers = Prop.int(-1_000_000_000_000_000, 1_000_000_000_000_000)
-  return Prop.check(Prop.pair(numbers, numbers), Prop.Config(runs: 30)) do |p|
+  Prop.check(Prop.pair(numbers, numbers), Prop.Config(runs: 30)) do |p|
     Prop.eq(sum_text("#{p.first}", "#{p.second}"), "#{p.first + p.second}")
   end
 end
@@ -105,9 +105,7 @@ def canonical(whole: Int, fraction: String) -> String
     size -= 1
   end
 
-  if size == 0
-    return "#{whole}"
-  end
+  return "#{whole}" if size == 0
 
-  return "#{whole}.#{fraction.slice(0, size)}"
+  "#{whole}.#{fraction.slice(0, size)}"
 end

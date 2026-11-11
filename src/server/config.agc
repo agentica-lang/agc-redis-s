@@ -28,5 +28,5 @@ export def parse(args: List[String]) -> Result[Config]
   )
 
   parsed = try OP.parse(parser, args)
-  return ok(Config(bind: OP.string(parsed, "bind"), port: OP.int(parsed, "port")))
+  ok(Config(bind: OP.string(parsed, "bind"), port: OP.int(parsed, "port")))
 end

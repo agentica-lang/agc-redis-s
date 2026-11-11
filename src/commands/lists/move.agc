@@ -14,7 +14,7 @@ import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "lmove", arity: 5, handler: &lmove),
     Command(name: "rpoplpush", arity: 3, handler: &rpoplpush),
     Command(name: "lmpop", arity: -4, handler: &lmpop),
@@ -24,32 +24,30 @@ end
 # Both words are read before any key.
 def lmove(call: Call) -> Outcome
   case end_of(call.args[2])
-    error(text) -> return fail(call, text)
+    error(text) -> fail(call, text)
     ok(from) ->
       case end_of(call.args[3])
-        error(text) -> return fail(call, text)
-        ok(to) -> return moved(call, from, to)
+        error(text) -> fail(call, text)
+        ok(to) -> moved(call, from, to)
       end
   end
 end
 
-def rpoplpush(call: Call) -> Outcome
-  return moved(call, End.Tail, End.Head)
-end
+def rpoplpush(call: Call) -> Outcome = moved(call, End.Tail, End.Head)
 
 def end_of(word: Bytes) -> Result[End]
   case Args.lower(word)
-    "left" -> return ok(End.Head)
-    "right" -> return ok(End.Tail)
-    _ -> return error(Errors.SYNTAX)
+    "left" -> ok(End.Head)
+    "right" -> ok(End.Tail)
+    _ -> error(Errors.SYNTAX)
   end
 end
 
 def moved(call: Call, from: End, to: End) -> Outcome
   case Lists.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Missing -> return reply(call, Reply.NilBulk)
-    Held.Foreign -> return wrong_type(call)
-    Held.Items(seq) -> return moved_to(call, seq, from, to)
+    Held.Missing -> reply(call, Reply.NilBulk)
+    Held.Foreign -> wrong_type(call)
+    Held.Items(seq) -> moved_to(call, seq, from, to)
   end
 end
 
@@ -73,7 +71,7 @@ def moved_to(call: Call, source: Seq, from: End, to: End) -> Outcome
   end
 
   grown = Lists.store(keyspace, call.args[1], Lists.push(target, element, to), call.now_ms)
-  return write(call, grown, Reply.Bulk(element))
+  write(call, grown, Reply.Bulk(element))
 end
 
 # numkeys is read first (a word and a number below 1 answer the same text), then
@@ -81,18 +79,16 @@ end
 # answers, a key of another type before it answers WRONGTYPE.
 def lmpop(call: Call) -> Outcome
   case Args.at_least_one(call.args[0], "ERR numkeys should be greater than 0")
-    error(text) -> return fail(call, text)
+    error(text) -> fail(call, text)
     ok(numkeys) ->
-      if numkeys >= call.args.size - 1
-        return fail(call, Errors.SYNTAX)
-      end
+      return fail(call, Errors.SYNTAX) if numkeys >= call.args.size - 1
 
       case end_of(call.args[numkeys + 1])
-        error(text) -> return fail(call, text)
+        error(text) -> fail(call, text)
         ok(side) ->
           case count_of(call.args.drop(numkeys + 2))
-            error(text) -> return fail(call, text)
-            ok(count) -> return first_list(call, call.args.drop(1).take(numkeys), side, count)
+            error(text) -> fail(call, text)
+            ok(count) -> first_list(call, call.args.drop(1).take(numkeys), side, count)
           end
       end
   end
@@ -100,15 +96,11 @@ end
 
 # `COUNT n` once, or nothing.
 def count_of(words: List[Bytes]) -> Result[Int]
-  if words.empty?
-    return ok(1)
-  end
+  return ok(1) if words.empty?
 
-  if words.size != 2 or Args.lower(words[0]) != "count"
-    return error(Errors.SYNTAX)
-  end
+  return error(Errors.SYNTAX) if words.size != 2 or Args.lower(words[0]) != "count"
 
-  return Args.at_least_one(words[1], "ERR count should be greater than 0")
+  Args.at_least_one(words[1], "ERR count should be greater than 0")
 end
 
 def first_list(call: Call, keys: List[Bytes], side: End, count: Int) -> Outcome
@@ -120,7 +112,7 @@ def first_list(call: Call, keys: List[Bytes], side: End, count: Int) -> Outcome
     end
   end
 
-  return reply(call, Reply.NilArray)
+  reply(call, Reply.NilArray)
 end
 
 def popped_from(call: Call, key: Bytes, seq: Seq, side: End, count: Int) -> Outcome
@@ -130,5 +122,5 @@ def popped_from(call: Call, key: Bytes, seq: Seq, side: End, count: Int) -> Outc
   end
 
   left = Lists.store(call.keyspace, key, Lists.drop(seq, side, taken), call.now_ms)
-  return write(call, left, Reply.Array([Reply.Bulk(key), Replies.popped(seq, side, taken)]))
+  write(call, left, Reply.Array([Reply.Bulk(key), Replies.popped(seq, side, taken)]))
 end

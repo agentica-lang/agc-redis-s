@@ -15,21 +15,13 @@ struct Step
   reply: String
 end
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
-def bulk(text: String) -> String
-  return "$#{text.size}\r\n#{text}\r\n"
-end
+def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String
-  return "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
-end
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
 
-def popped(key: String, items: List[String]) -> String
-  return "*2\r\n#{bulk(key)}#{strings(items)}"
-end
+def popped(key: String, items: List[String]) -> String = "*2\r\n#{bulk(key)}#{strings(items)}"
 
 # The element leaves one end and joins one end of the destination, which may be
 # the same list (a rotation) and is created when missing. The words are read
@@ -88,7 +80,7 @@ def test_lmove_and_rpoplpush() -> Result[Void]
     "$-1\r\n",
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # A live source and a live destination keep their deadlines, a source left
@@ -115,7 +107,7 @@ def test_a_move_keeps_the_deadlines() -> Result[Void]
 
   want = [":2\r\n", ":1\r\n", ":1\r\n", ":1\r\n", bulk("1"), ":1000\r\n", ":2000\r\n", bulk("2")]
   want = want.concat([":0\r\n", ":-1\r\n", ":-2\r\n", ":1\r\n", ":1\r\n", bulk("x"), ":500\r\n"])
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # LMPOP pops from the first key that holds a list, up to COUNT elements, and
@@ -174,7 +166,7 @@ def test_lmpop() -> Result[Void]
   try Test.eq(ask([["RPUSH", "LEFT", "x"], ["LMPOP", "1", "a", "LEFT"]]), ":1\r\n*-1\r\n")
 
   bad = [NUMKEYS, NUMKEYS, NUMKEYS, SYNTAX, SYNTAX, SYNTAX, COUNT, COUNT, SYNTAX, SYNTAX, SYNTAX]
-  return Test.eq(errors, bad.concat(["-ERR wrong number of arguments for 'lmpop' command\r\n"]).join(""))
+  Test.eq(errors, bad.concat(["-ERR wrong number of arguments for 'lmpop' command\r\n"]).join(""))
 end
 
 # Two lists against a model of two Lists: pushes at both ends, LMOVE between
@@ -184,20 +176,16 @@ def test_moves_follow_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 99)
   ops = Prop.list(Prop.list(numbers, 5), 25)
-  return Prop.check(ops, Prop.Config(runs: 150)) do |list|
+  Prop.check(ops, Prop.Config(runs: 150)) do |list|
     padded = list.map do |op| op.concat([0, 0, 0, 0, 0]) end
     got = run_requests(table, fresh(), padded.map do |op| argv_of(op) end).reply
     Prop.eq(got.to_a, modeled(padded).bytes.to_a)
   end
 end
 
-def key_of(n: Int) -> String
-  return ["a", "b"][n % 2]
-end
+def key_of(n: Int) -> String = ["a", "b"][n % 2]
 
-def side_of(n: Int) -> String
-  return ["LEFT", "RIGHT"][n % 2]
-end
+def side_of(n: Int) -> String = ["LEFT", "RIGHT"][n % 2]
 
 def argv_of(op: List[Int]) -> List[Bytes]
   value = "v#{op[1] % 5}".bytes
@@ -244,22 +232,18 @@ def modeled(ops: List[List[Int]]) -> String
     end
   end
 
-  return out
+  out
 end
 
 def replaced(held: List[List[String]], index: Int, items: List[String]) -> List[List[String]]
-  if index == 0
-    return [items, held[1]]
-  end
+  return [items, held[1]] if index == 0
 
-  return [held[0], items]
+  [held[0], items]
 end
 
 def moved(held: List[List[String]], op: List[Int]) -> Step
   source = held[op[1] % 2]
-  if source.empty?
-    return Step(held: held, reply: "$-1\r\n")
-  end
+  return Step(held: held, reply: "$-1\r\n") if source.empty?
 
   element = source[source.size - 1]
   rest = source.take(source.size - 1)
@@ -275,7 +259,7 @@ def moved(held: List[List[String]], op: List[Int]) -> Step
     grown = [element].concat(target)
   end
 
-  return Step(held: replaced(after, op[2] % 2, grown), reply: bulk(element))
+  Step(held: replaced(after, op[2] % 2, grown), reply: bulk(element))
 end
 
 def popped_first(held: List[List[String]], op: List[Int]) -> Step
@@ -300,5 +284,5 @@ def popped_first(held: List[List[String]], op: List[Int]) -> Step
     end
   end
 
-  return Step(held: held, reply: "*-1\r\n")
+  Step(held: held, reply: "*-1\r\n")
 end

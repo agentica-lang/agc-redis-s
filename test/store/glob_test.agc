@@ -1,13 +1,9 @@
 import Glob from "../../src/store/glob"
 import Prop from "pkg/prop/prop"
 
-def hit?(pattern: String, text: String) -> Bool
-  return Glob.matches?(pattern.bytes, text.bytes)
-end
+def hit?(pattern: String, text: String) -> Bool = Glob.matches?(pattern.bytes, text.bytes)
 
-def hit_nocase?(pattern: String, text: String) -> Bool
-  return Glob.matches?(pattern.bytes, text.bytes, true)
-end
+def hit_nocase?(pattern: String, text: String) -> Bool = Glob.matches?(pattern.bytes, text.bytes, true)
 
 # The cases of Redis's own tests and the quirks of its stringmatchlen: sets,
 # ranges (swapped bounds too), `^`, escapes, `[a-]` as a range up to `]`, a set
@@ -52,7 +48,7 @@ def test_the_rules_of_redis() -> Result[Void]
 
   try Test.assert(hit_nocase?("H*LLO", "heLLo"), "case-blind star")
   try Test.assert(hit_nocase?("[A-C]x", "bX"), "case-blind range")
-  return Test.assert(not hit?("H*LLO", "hello"), "case matters by default")
+  Test.assert(not hit?("H*LLO", "hello"), "case matters by default")
 end
 
 # Many stars must not cost more than the pattern times the subject: the loops
@@ -62,28 +58,20 @@ def test_many_stars_are_fast() -> Result[Void]
   letters = (1..400).to_a.map do |_| "a" end.join("")
   try Test.assert(not hit?(stars + "z", letters), "stars then z")
   spread = (1..20).to_a.map do |_| "*a" end.join("") + "b"
-  return Test.assert(not hit?(spread, letters), "alternating")
+  Test.assert(not hit?(spread, letters), "alternating")
 end
 
 def slow(pattern: List[Int], text: List[Int]) -> Bool
-  if pattern.empty?
-    return text.empty?
-  end
+  return text.empty? if pattern.empty?
 
-  if pattern[0] == 42
-    return slow(pattern.drop(1), text) or (not text.empty? and slow(pattern, text.drop(1)))
-  end
+  return slow(pattern.drop(1), text) or (not text.empty? and slow(pattern, text.drop(1))) if pattern[0] == 42
 
-  if text.empty?
-    return false
-  end
+  return false if text.empty?
 
-  return (pattern[0] == 63 or pattern[0] == text[0]) and slow(pattern.drop(1), text.drop(1))
+  (pattern[0] == 63 or pattern[0] == text[0]) and slow(pattern.drop(1), text.drop(1))
 end
 
-def code(n: Int) -> Int
-  return [97, 98, 42, 63][n]
-end
+def code(n: Int) -> Int = [97, 98, 42, 63][n]
 
 # On `a`, `b`, `*` and `?` the matcher agrees with a plain recursive matcher
 # (the empty subject aside, which Redis answers with "no" except for the empty
@@ -92,7 +80,7 @@ end
 def test_agrees_with_a_slow_matcher() -> Result[Void]
   patterns = Prop.list(Prop.int(0, 3), 6)
   texts = Prop.list(Prop.int(0, 1), 6)
-  return Prop.check(Prop.pair(patterns, texts), Prop.Config(runs: 600)) do |pair|
+  Prop.check(Prop.pair(patterns, texts), Prop.Config(runs: 600)) do |pair|
     pattern = pair.first.map do |n| code(n) end
     text = pair.second.map do |n| 97 + n end
     expected = slow(pattern, text)

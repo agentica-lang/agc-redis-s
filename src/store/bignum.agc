@@ -20,14 +20,12 @@ export def from_int(n: Int) -> List[Int]
     rest = rest / LIMB
   end
 
-  return limbs
+  limbs
 end
 
 ## The number of bits: 0 for 0, else the position of the highest 1 bit plus one.
 export def bit_length(a: List[Int]) -> Int
-  if a.empty?
-    return 0
-  end
+  return 0 if a.empty?
 
   top = a[a.size - 1]
   bits = 0
@@ -36,14 +34,12 @@ export def bit_length(a: List[Int]) -> Int
     top = top / 2
   end
 
-  return (a.size - 1) * 30 + bits
+  (a.size - 1) * 30 + bits
 end
 
 ## `a * small`, with `small` between 0 and 2^30.
 export def mul_small(a: List[Int], small: Int) -> List[Int]
-  if small == 0
-    return []
-  end
+  return [] if small == 0
 
   out: List[Int] = []
   carry = 0
@@ -57,7 +53,7 @@ export def mul_small(a: List[Int], small: Int) -> List[Int]
     out = out.push(carry)
   end
 
-  return out
+  out
 end
 
 export def add(a: List[Int], b: List[Int]) -> List[Int]
@@ -79,7 +75,7 @@ export def add(a: List[Int], b: List[Int]) -> List[Int]
     i += 1
   end
 
-  return out
+  out
 end
 
 ## `a - b`, with `b` not greater than `a`.
@@ -103,15 +99,13 @@ export def sub(a: List[Int], b: List[Int]) -> List[Int]
     i += 1
   end
 
-  return trim(out)
+  trim(out)
 end
 
 ## -1, 0 or 1 as `a` is less than, equal to or greater than `b`.
 export def compare(a: List[Int], b: List[Int]) -> Int
   if a.size != b.size
-    if a.size < b.size
-      return -1
-    end
+    return -1 if a.size < b.size
 
     return 1
   end
@@ -119,9 +113,7 @@ export def compare(a: List[Int], b: List[Int]) -> Int
   i = a.size - 1
   while i >= 0
     if a[i] != b[i]
-      if a[i] < b[i]
-        return -1
-      end
+      return -1 if a[i] < b[i]
 
       return 1
     end
@@ -129,34 +121,28 @@ export def compare(a: List[Int], b: List[Int]) -> Int
     i -= 1
   end
 
-  return 0
+  0
 end
 
 ## `a * 2^bits`.
 export def shift_left(a: List[Int], bits: Int) -> List[Int]
-  if a.empty? or bits == 0
-    return a
-  end
+  return a if a.empty? or bits == 0
 
   zeros: List[Int] = (0...(bits / 30)).to_a.map do |_| 0 end
-  return zeros.concat(mul_small(a, 2.pow(bits % 30)))
+  zeros.concat(mul_small(a, 2.pow(bits % 30)))
 end
 
 ## `a / 2^bits` rounded to the nearest whole number, a tie going to the even
 ## one: the rounding of an x87 FPU and of `printf`.
 export def shift_right_even(a: List[Int], bits: Int) -> List[Int]
-  if bits == 0 or a.empty?
-    return a
-  end
+  return a if bits == 0 or a.empty?
 
   limbs = bits / 30
   inner = bits % 30
   kept = shift_floor(a, limbs, inner)
-  if round_up?(a, bits, kept)
-    return add(kept, [1])
-  end
+  return add(kept, [1]) if round_up?(a, bits, kept)
 
-  return kept
+  kept
 end
 
 ## `a / small` and the remainder, with `small` between 1 and 2^30.
@@ -171,14 +157,12 @@ export def divide_small(a: List[Int], small: Int) -> Divided
     i -= 1
   end
 
-  return Divided(quotient: trim(top_first.reverse), remainder: rest)
+  Divided(quotient: trim(top_first.reverse), remainder: rest)
 end
 
 ## The digits of `a`, without leading zeros ("0" for 0).
 export def to_decimal(a: List[Int]) -> String
-  if a.empty?
-    return "0"
-  end
+  return "0" if a.empty?
 
   chunks: List[Int] = []
   rest = a
@@ -189,37 +173,29 @@ export def to_decimal(a: List[Int]) -> String
   end
 
   top = chunks.reverse
-  return ["#{top[0]}"].concat(top.drop(1).map do |n| pad9(n) end).join("")
+  ["#{top[0]}"].concat(top.drop(1).map do |n| pad9(n) end).join("")
 end
 
 # The number of the limbs of `a` below `limbs`, shifted by `inner` bits, whole.
 def shift_floor(a: List[Int], limbs: Int, inner: Int) -> List[Int]
   rest = a.drop(limbs)
-  if inner == 0
-    return rest
-  end
+  return rest if inner == 0
 
-  return divide_small(rest, 2.pow(inner)).quotient
+  divide_small(rest, 2.pow(inner)).quotient
 end
 
 # Whether the dropped part of `a` (its lowest `bits` bits) is above half, or
 # is half and `kept` is odd.
 def round_up?(a: List[Int], bits: Int, kept: List[Int]) -> Bool
   half_at = bits - 1
-  if half_at / 30 >= a.size
-    return false
-  end
+  return false if half_at / 30 >= a.size
 
   half = (a[half_at / 30] / 2.pow(half_at % 30)) % 2 == 1
-  if not half
-    return false
-  end
+  return false if not half
 
-  if sticky?(a, half_at)
-    return true
-  end
+  return true if sticky?(a, half_at)
 
-  return not kept.empty? and kept[0] % 2 == 1
+  not kept.empty? and kept[0] % 2 == 1
 end
 
 # Whether any bit of `a` below bit `at` is 1.
@@ -227,14 +203,12 @@ def sticky?(a: List[Int], at: Int) -> Bool
   whole = at / 30
   i = 0
   while i < whole
-    if a[i] != 0
-      return true
-    end
+    return true if a[i] != 0
 
     i += 1
   end
 
-  return whole < a.size and a[whole] % 2.pow(at % 30) != 0
+  whole < a.size and a[whole] % 2.pow(at % 30) != 0
 end
 
 def trim(limbs: List[Int]) -> List[Int]
@@ -243,11 +217,11 @@ def trim(limbs: List[Int]) -> List[Int]
     size -= 1
   end
 
-  return limbs.take(size)
+  limbs.take(size)
 end
 
 def pad9(n: Int) -> String
   text = "#{n}"
   zeros = (0...(9 - text.size)).to_a.map do |_| "0" end
-  return zeros.join("") + text
+  zeros.join("") + text
 end

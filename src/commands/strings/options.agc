@@ -33,9 +33,7 @@ export def read(words: List[Bytes], form: Form) -> Result[Options]
   while i < words.size
     word = Args.lower(words[i])
     timed = ["ex", "px", "exat", "pxat"].include?(word)
-    if not timed and not own?(form, word)
-      return error(Errors.SYNTAX)
-    end
+    return error(Errors.SYNTAX) if not timed and not own?(form, word)
 
     if timed and (found.keepttl or found.persist or (found.kind != "" and found.kind != word) or i + 1 == words.size)
       return error(Errors.SYNTAX)
@@ -43,28 +41,20 @@ export def read(words: List[Bytes], form: Form) -> Result[Options]
 
     case word
       "nx" ->
-        if found.xx
-          return error(Errors.SYNTAX)
-        end
+        return error(Errors.SYNTAX) if found.xx
 
         found = found.with(nx: true)
       "xx" ->
-        if found.nx
-          return error(Errors.SYNTAX)
-        end
+        return error(Errors.SYNTAX) if found.nx
 
         found = found.with(xx: true)
       "get" -> found = found.with(get: true)
       "keepttl" ->
-        if found.kind != ""
-          return error(Errors.SYNTAX)
-        end
+        return error(Errors.SYNTAX) if found.kind != ""
 
         found = found.with(keepttl: true)
       "persist" ->
-        if found.kind != ""
-          return error(Errors.SYNTAX)
-        end
+        return error(Errors.SYNTAX) if found.kind != ""
 
         found = found.with(persist: true)
       _ ->
@@ -75,25 +65,25 @@ export def read(words: List[Bytes], form: Form) -> Result[Options]
     i += 1
   end
 
-  return ok(found)
+  ok(found)
 end
 
 ## The deadline the options ask for; `none` when they ask for none. The error is
 ## the reply.
 export def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
   case found.time
-    none -> return ok(none)
+    none -> ok(none)
     some(text) ->
       seconds = found.kind == "ex" or found.kind == "exat"
       relative = found.kind == "ex" or found.kind == "px"
-      return ok(some(try Args.expire_ms(text, seconds, relative, call.now_ms, call.name)))
+      ok(some(try Args.expire_ms(text, seconds, relative, call.now_ms, call.name)))
   end
 end
 
 # The words that only one of the forms knows.
 def own?(form: Form, word: String) -> Bool
   case form
-    Form.Set -> return ["nx", "xx", "get", "keepttl"].include?(word)
-    Form.GetEx -> return word == "persist"
+    Form.Set -> ["nx", "xx", "get", "keepttl"].include?(word)
+    Form.GetEx -> word == "persist"
   end
 end

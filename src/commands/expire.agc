@@ -18,7 +18,7 @@ struct Condition
 end
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "expire", arity: -3, handler: &expire),
     Command(name: "pexpire", arity: -3, handler: &pexpire),
     Command(name: "expireat", arity: -3, handler: &expireat),
@@ -27,21 +27,13 @@ export def commands() -> List[Command]
   ]
 end
 
-def expire(call: Call) -> Outcome
-  return expire_generic(call, true, call.now_ms)
-end
+def expire(call: Call) -> Outcome = expire_generic(call, true, call.now_ms)
 
-def pexpire(call: Call) -> Outcome
-  return expire_generic(call, false, call.now_ms)
-end
+def pexpire(call: Call) -> Outcome = expire_generic(call, false, call.now_ms)
 
-def expireat(call: Call) -> Outcome
-  return expire_generic(call, true, 0)
-end
+def expireat(call: Call) -> Outcome = expire_generic(call, true, 0)
 
-def pexpireat(call: Call) -> Outcome
-  return expire_generic(call, false, 0)
-end
+def pexpireat(call: Call) -> Outcome = expire_generic(call, false, 0)
 
 def conditions(words: List[Bytes]) -> Condition
   found = Condition()
@@ -63,19 +55,17 @@ def conditions(words: List[Bytes]) -> Condition
     return found.with(refused: some("ERR GT and LT options at the same time are not compatible".bytes))
   end
 
-  return found
+  found
 end
 
 # A key with no deadline counts as an infinite one for GT and LT.
 def allowed?(found: Condition, current: Optional[Int], when: Int) -> Bool
   case current
-    none -> return not (found.xx or found.gt)
+    none -> not (found.xx or found.gt)
     some(current_due) ->
-      if found.nx
-        return false
-      end
+      return false if found.nx
 
-      return not ((found.gt and when <= current_due) or (found.lt and when >= current_due))
+      not ((found.gt and when <= current_due) or (found.lt and when >= current_due))
   end
 end
 
@@ -89,26 +79,20 @@ def expire_generic(call: Call, seconds: Bool, base_ms: Int) -> Outcome
   end
 
   case Args.expire_when(call.args[1], seconds, base_ms, call.name)
-    error(text) -> return fail(call, text)
-    ok(when) -> return expire_key(call, found, when)
+    error(text) -> fail(call, text)
+    ok(when) -> expire_key(call, found, when)
   end
 end
 
 def expire_key(call: Call, found: Condition, when: Int) -> Outcome
   key = call.args[0]
-  if Keyspace.get(call.keyspace, key, call.now_ms).none?
-    return reply(call, Reply.Integer(0))
-  end
+  return reply(call, Reply.Integer(0)) if Keyspace.get(call.keyspace, key, call.now_ms).none?
 
-  if not allowed?(found, Keyspace.deadline(call.keyspace, key), when)
-    return reply(call, Reply.Integer(0))
-  end
+  return reply(call, Reply.Integer(0)) if not allowed?(found, Keyspace.deadline(call.keyspace, key), when)
 
-  if when <= call.now_ms
-    return write(call, Keyspace.delete(call.keyspace, key), Reply.Integer(1))
-  end
+  return write(call, Keyspace.delete(call.keyspace, key), Reply.Integer(1)) if when <= call.now_ms
 
-  return write(call, Keyspace.expire_at(call.keyspace, key, when), Reply.Integer(1))
+  write(call, Keyspace.expire_at(call.keyspace, key, when), Reply.Integer(1))
 end
 
 def persist(call: Call) -> Outcome
@@ -117,5 +101,5 @@ def persist(call: Call) -> Outcome
     return reply(call, Reply.Integer(0))
   end
 
-  return write(call, Keyspace.persist(call.keyspace, key), Reply.Integer(1))
+  write(call, Keyspace.persist(call.keyspace, key), Reply.Integer(1))
 end

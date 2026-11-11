@@ -1,9 +1,7 @@
 import Integer from "../../src/resp/integer"
 import Prop from "pkg/prop/prop"
 
-def parsed(text: String) -> Optional[Int]
-  return Integer.parse(text.bytes)
-end
+def parsed(text: String) -> Optional[Int] = Integer.parse(text.bytes)
 
 # What Redis's string2ll refuses, and the edges of the 64-bit range it accepts.
 def test_parse_edges() -> Result[Void]
@@ -18,16 +16,14 @@ def test_parse_edges() -> Result[Void]
     try Test.eq(parsed(text), none)
   end
 
-  return Test.assert(true, "edges")
+  Test.assert(true, "edges")
 end
 
 # Any Int written in decimal reads back as itself, over a range wider than 2^60.
 def test_parse_round_trip() -> Result[Void]
   half = Prop.int(-1_000_000_000, 1_000_000_000)
   gen = Prop.map(Prop.pair(half, half), &widen)
-  return Prop.check(gen, Prop.Config(runs: 100)) do |n| Prop.eq(parsed("#{n}"), some(n)) end
+  Prop.check(gen, Prop.Config(runs: 100)) do |n| Prop.eq(parsed("#{n}"), some(n)) end
 end
 
-def widen(p: Prop.Pair[Int, Int]) -> Int
-  return p.first * 4_000_000_000 + p.second
-end
+def widen(p: Prop.Pair[Int, Int]) -> Int = p.first * 4_000_000_000 + p.second

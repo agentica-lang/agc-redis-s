@@ -18,8 +18,8 @@ end
 ## commands answer WRONGTYPE.
 export def foreign?(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Bool
   case Keyspace.get(keyspace, key, now_ms)
-    none -> return false
-    some(value) -> return not string?(value)
+    none -> false
+    some(value) -> not string?(value)
   end
 end
 
@@ -37,7 +37,7 @@ export def zeros(count: Int) -> Bytes
     left = left / 2
   end
 
-  return built
+  built
 end
 
 ## `old` with `value` written at `offset`, zero bytes filling a gap, as SETRANGE
@@ -48,16 +48,14 @@ export def set_range(old: Bytes, offset: Int, value: Bytes) -> Bytes
     head = old + zeros(offset - old.size)
   end
 
-  return Bytes.concat([head, value, old.drop(offset + value.size)])
+  Bytes.concat([head, value, old.drop(offset + value.size)])
 end
 
 ## The bytes from `start` to `stop` inclusive; a negative index counts from the
 ## end, and an index past an end is cut to it, as GETRANGE does.
 export def get_range(text: Bytes, start: Int, stop: Int) -> Bytes
   size = text.size
-  if start < 0 and stop < 0 and start > stop
-    return "".bytes
-  end
+  return "".bytes if start < 0 and stop < 0 and start > stop
 
   from = start
   to = stop
@@ -81,11 +79,9 @@ export def get_range(text: Bytes, start: Int, stop: Int) -> Bytes
     to = size - 1
   end
 
-  if from > to or size == 0
-    return "".bytes
-  end
+  return "".bytes if from > to or size == 0
 
-  return text.slice(from, to - from + 1)
+  text.slice(from, to - from + 1)
 end
 
 ## The value after APPEND of `more`, or none when the total would pass `limit`
@@ -93,11 +89,9 @@ end
 ## new piece alone, and nothing is joined.
 export def append(held: Optional[Value], more: Bytes, limit: Int) -> Optional[Value]
   base = held.unwrap_or(Value.Str("".bytes))
-  if value_size(base) + more.size > limit
-    return none
-  end
+  return none if value_size(base) + more.size > limit
 
-  return some(with_more(base, more))
+  some(with_more(base, more))
 end
 
 ## The keyspace with the string at each of `keys` joined into one `Str`. A value
@@ -116,5 +110,5 @@ export def settle(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -
     end
   end
 
-  return result
+  result
 end

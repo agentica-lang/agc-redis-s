@@ -13,7 +13,7 @@ import {Value, value_size} from "../../store/value"
 TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 
 export def commands() -> List[Command]
-  return [Command(name: "append", arity: 3, handler: &append), Command(name: "setrange", arity: 4, handler: &setrange)]
+  [Command(name: "append", arity: 3, handler: &append), Command(name: "setrange", arity: 4, handler: &setrange)]
 end
 
 # The pieces are kept, not joined: see `Value`. The size check uses the stored
@@ -21,15 +21,12 @@ end
 def append(call: Call) -> Outcome
   key = call.args[0]
   more = call.args[1]
-  if Access.foreign?(call, key)
-    return wrong_type(call)
-  end
+  return wrong_type(call) if Access.foreign?(call, key)
 
   held = Keyspace.get(call.keyspace, key, call.now_ms)
   case Strings.append(held, more, Strings.MAX_BYTES)
-    none -> return fail(call, TOO_BIG)
-    some(grown) ->
-      return write(call, Keyspace.put(call.keyspace, key, grown, call.now_ms), Reply.Integer(value_size(grown)))
+    none -> fail(call, TOO_BIG)
+    some(grown) -> write(call, Keyspace.put(call.keyspace, key, grown, call.now_ms), Reply.Integer(value_size(grown)))
   end
 end
 
@@ -38,28 +35,20 @@ end
 # nothing when it is refused.
 def setrange(call: Call) -> Outcome
   case Integer.parse(call.args[1])
-    none -> return fail(call, Errors.NOT_INT)
+    none -> fail(call, Errors.NOT_INT)
     some(offset) ->
       key = call.args[0]
       value = call.args[2]
-      if offset < 0
-        return fail(call, "ERR offset is out of range")
-      end
+      return fail(call, "ERR offset is out of range") if offset < 0
 
-      if Access.foreign?(call, key)
-        return wrong_type(call)
-      end
+      return wrong_type(call) if Access.foreign?(call, key)
 
-      if value.empty?
-        return reply(call, Reply.Integer(Access.size_of(call, key)))
-      end
+      return reply(call, Reply.Integer(Access.size_of(call, key))) if value.empty?
 
-      if offset > Strings.MAX_BYTES - value.size
-        return fail(call, TOO_BIG)
-      end
+      return fail(call, TOO_BIG) if offset > Strings.MAX_BYTES - value.size
 
       old = Access.lookup(call, key).unwrap_or("".bytes)
       grown = Strings.set_range(old, offset, value)
-      return write(call, Keyspace.put(call.keyspace, key, Value.Str(grown), call.now_ms), Reply.Integer(grown.size))
+      write(call, Keyspace.put(call.keyspace, key, Value.Str(grown), call.now_ms), Reply.Integer(grown.size))
   end
 end

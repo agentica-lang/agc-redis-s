@@ -13,11 +13,11 @@ import {Message} from "../../src/server/message"
 def ran(store: Store, words: List[String]) -> Store
   table = Table.build()
   argv = words.map do |w| w.bytes end
-  return Runner.run(table, Engine.join(store, 1), 1, argv, 0).store
+  Runner.run(table, Engine.join(store, 1), 1, argv, 0).store
 end
 
 def dbsize(store: Store, now: Int) -> Bytes
-  return Runner.run(Table.build(), Engine.join(store, 1), 1, ["DBSIZE".bytes], now).reply
+  Runner.run(Table.build(), Engine.join(store, 1), 1, ["DBSIZE".bytes], now).reply
 end
 
 # The task reads the time only through the clock it is given: with a closed
@@ -32,13 +32,9 @@ def test_the_sweep_follows_the_given_clock() -> Result[Void]
   early = StoreTask.serve(StoreTask.Setup(inbox: inbox, store: seeded, table: Table.build(), now_ms: &fixed_early))
   late = StoreTask.serve(StoreTask.Setup(inbox: inbox, store: seeded, table: Table.build(), now_ms: &fixed_late))
   try Test.eq(dbsize(early, 99).to_a, ":2\r\n".bytes.to_a)
-  return Test.eq(dbsize(late, 1000).to_a, ":1\r\n".bytes.to_a)
+  Test.eq(dbsize(late, 1000).to_a, ":1\r\n".bytes.to_a)
 end
 
-def fixed_early() -> Int
-  return Engine.SWEEP_MS - 1
-end
+def fixed_early() -> Int = Engine.SWEEP_MS - 1
 
-def fixed_late() -> Int
-  return 1000
-end
+def fixed_late() -> Int = 1000

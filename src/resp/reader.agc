@@ -75,19 +75,13 @@ end
 
 ## Reads the request that starts at `from.at`.
 export def read_request(buf: Bytes, from: Partial) -> Read
-  if from.remaining > 0
-    return array_items(buf, from)
-  end
+  return array_items(buf, from) if from.remaining > 0
 
-  if from.at >= buf.size
-    return Read.Incomplete(from.with(need: 1, scanned: 0, line: false))
-  end
+  return Read.Incomplete(from.with(need: 1, scanned: 0, line: false)) if from.at >= buf.size
 
-  if buf[from.at] == STAR
-    return read_array(buf, from)
-  end
+  return read_array(buf, from) if buf[from.at] == STAR
 
-  return read_inline(buf, from)
+  read_inline(buf, from)
 end
 
 # The offset of the LF of the line at `from.at`. Without one, the line may
@@ -95,19 +89,15 @@ end
 def find_line(buf: Bytes, from: Partial, too_big: String) -> Line
   i = from.at + from.scanned
   while i < buf.size
-    if buf[i] == LF
-      return Line.Found(i)
-    end
+    return Line.Found(i) if buf[i] == LF
 
     i += 1
   end
 
   seen = buf.size - from.at
-  if seen > MAX_LINE
-    return Line.Stop(Read.Invalid(too_big))
-  end
+  return Line.Stop(Read.Invalid(too_big)) if seen > MAX_LINE
 
-  return Line.Stop(Read.Incomplete(from.with(need: seen + 1, scanned: seen, line: true)))
+  Line.Stop(Read.Incomplete(from.with(need: seen + 1, scanned: seen, line: true)))
 end
 
 # The line without its CR LF; `lf` is the offset of the LF.
@@ -117,57 +107,49 @@ def line_text(buf: Bytes, from: Int, lf: Int) -> Bytes
     stop -= 1
   end
 
-  return buf.slice(from, stop - from)
+  buf.slice(from, stop - from)
 end
 
 def read_inline(buf: Bytes, from: Partial) -> Read
   case find_line(buf, from, "Protocol error: too big inline request")
-    Line.Stop(read) -> return read
-    Line.Found(lf) -> return inline_request(line_text(buf, from.at, lf), lf + 1)
+    Line.Stop(read) -> read
+    Line.Found(lf) -> inline_request(line_text(buf, from.at, lf), lf + 1)
   end
 end
 
 def inline_request(line: Bytes, next: Int) -> Read
   case split_args(line)
-    none -> return Read.Invalid("Protocol error: unbalanced quotes in request")
+    none -> Read.Invalid("Protocol error: unbalanced quotes in request")
     some(words) ->
-      if words.empty?
-        return Read.Skip(next)
-      end
+      return Read.Skip(next) if words.empty?
 
-      return Read.Request(words, next)
+      Read.Request(words, next)
   end
 end
 
 # Words are bytes: an argument that is not UTF-8 is still an argument. A line
 # with no quote and no NUL splits on whitespace alone, which is the common case.
 def split_args(line: Bytes) -> Optional[List[Bytes]]
-  if plain?(line)
-    return some(split_words(line))
-  end
+  return some(split_words(line)) if plain?(line)
 
-  return split_quoted(cut_at_nul(line))
+  split_quoted(cut_at_nul(line))
 end
 
 def plain?(line: Bytes) -> Bool
   for byte in line
-    if byte == DQUOTE or byte == SQUOTE or byte == 0
-      return false
-    end
+    return false if byte == DQUOTE or byte == SQUOTE or byte == 0
   end
 
-  return true
+  true
 end
 
 # Redis reads the line as a C string: a NUL ends it.
 def cut_at_nul(line: Bytes) -> Bytes
   for i in 0...line.size
-    if line[i] == 0
-      return line.take(i)
-    end
+    return line.take(i) if line[i] == 0
   end
 
-  return line
+  line
 end
 
 # Redis skips leading blanks with C isspace, but an unquoted word ends only at
@@ -180,9 +162,7 @@ def split_words(line: Bytes) -> List[Bytes]
       i += 1
     end
 
-    if i >= line.size
-      return words
-    end
+    return words if i >= line.size
 
     start = i
     while i < line.size and not word_end?(line[i])
@@ -192,16 +172,12 @@ def split_words(line: Bytes) -> List[Bytes]
     words = words.push(line.slice(start, i - start))
   end
 
-  return words
+  words
 end
 
-def word_end?(byte: Int) -> Bool
-  return byte == 32 or byte == LF or byte == CR or byte == 9 or byte == 0
-end
+def word_end?(byte: Int) -> Bool = byte == 32 or byte == LF or byte == CR or byte == 9 or byte == 0
 
-def space?(byte: Int) -> Bool
-  return byte == 32 or (byte >= 9 and byte <= 13)
-end
+def space?(byte: Int) -> Bool = byte == 32 or (byte >= 9 and byte <= 13)
 
 # Redis's sdssplitargs: quotes may start inside a word, and a closing quote
 # must be followed by a space or the end of the line.
@@ -213,9 +189,7 @@ def split_quoted(line: Bytes) -> Optional[List[Bytes]]
       i += 1
     end
 
-    if i >= line.size
-      return some(words)
-    end
+    return some(words) if i >= line.size
 
     case read_word(line, i)
       Arg.Unbalanced -> return none
@@ -225,7 +199,7 @@ def split_quoted(line: Bytes) -> Optional[List[Bytes]]
     end
   end
 
-  return some(words)
+  some(words)
 end
 
 def read_word(line: Bytes, start: Int) -> Arg
@@ -234,18 +208,14 @@ def read_word(line: Bytes, start: Int) -> Arg
   quote = 0
   while true
     if i >= line.size
-      if quote != 0
-        return Arg.Unbalanced
-      end
+      return Arg.Unbalanced if quote != 0
 
       return Arg.Done(out, i)
     end
 
     byte = line[i]
     if quote == 0
-      if word_end?(byte)
-        return Arg.Done(out, i)
-      end
+      return Arg.Done(out, i) if word_end?(byte)
 
       if byte == DQUOTE or byte == SQUOTE
         quote = byte
@@ -255,9 +225,7 @@ def read_word(line: Bytes, start: Int) -> Arg
 
       i += 1
     elsif byte == quote
-      if i + 1 < line.size and not space?(line[i + 1])
-        return Arg.Unbalanced
-      end
+      return Arg.Unbalanced if i + 1 < line.size and not space?(line[i + 1])
 
       return Arg.Done(out, i + 1)
     elsif byte == BACKSLASH and quote == DQUOTE and hex_escape?(line, i)
@@ -275,28 +243,22 @@ def read_word(line: Bytes, start: Int) -> Arg
     end
   end
 
-  return Arg.Unbalanced
+  Arg.Unbalanced
 end
 
 def hex_escape?(line: Bytes, i: Int) -> Bool
-  return i + 3 < line.size and line[i + 1] == LOWER_X and hex_value(line[i + 2]) >= 0 and hex_value(line[i + 3]) >= 0
+  i + 3 < line.size and line[i + 1] == LOWER_X and hex_value(line[i + 2]) >= 0 and hex_value(line[i + 3]) >= 0
 end
 
 # -1 when the byte is not a hex digit.
 def hex_value(byte: Int) -> Int
-  if byte >= ZERO and byte <= NINE
-    return byte - ZERO
-  end
+  return byte - ZERO if byte >= ZERO and byte <= NINE
 
-  if byte >= 97 and byte <= 102
-    return byte - 87
-  end
+  return byte - 87 if byte >= 97 and byte <= 102
 
-  if byte >= 65 and byte <= 70
-    return byte - 55
-  end
+  return byte - 55 if byte >= 65 and byte <= 70
 
-  return -1
+  -1
 end
 
 # After a backslash in double quotes; any other byte stands for itself.
@@ -313,20 +275,16 @@ end
 
 def read_array(buf: Bytes, from: Partial) -> Read
   case find_line(buf, from, "Protocol error: too big mbulk count string")
-    Line.Stop(read) -> return read
+    Line.Stop(read) -> read
     Line.Found(lf) ->
       case Integer.parse(line_text(buf, from.at + 1, lf))
-        none -> return Read.Invalid("Protocol error: invalid multibulk length")
+        none -> Read.Invalid("Protocol error: invalid multibulk length")
         some(n) ->
-          if n > MAX_ARRAY
-            return Read.Invalid("Protocol error: invalid multibulk length")
-          end
+          return Read.Invalid("Protocol error: invalid multibulk length") if n > MAX_ARRAY
 
-          if n <= 0
-            return Read.Skip(lf + 1)
-          end
+          return Read.Skip(lf + 1) if n <= 0
 
-          return array_items(buf, Partial(at: lf + 1, remaining: n))
+          array_items(buf, Partial(at: lf + 1, remaining: n))
       end
   end
 end
@@ -355,13 +313,11 @@ def array_items(buf: Bytes, from: Partial) -> Read
     end
   end
 
-  return Read.Request(items, pos)
+  Read.Request(items, pos)
 end
 
 def read_bulk(buf: Bytes, from: Int, scanned: Int, held: Int) -> Bulk
-  if from >= buf.size
-    return Bulk.More(1, 0, false)
-  end
+  return Bulk.More(1, 0, false) if from >= buf.size
 
   if buf[from] != DOLLAR
     return Bulk.Fail(
@@ -370,12 +326,12 @@ def read_bulk(buf: Bytes, from: Int, scanned: Int, held: Int) -> Bulk
   end
 
   case find_line(buf, Partial(at: from, scanned: scanned), "Protocol error: too big bulk count string")
-    Line.Stop(Read.Incomplete(p)) -> return Bulk.More(p.need, p.scanned, true)
-    Line.Stop(read) -> return Bulk.Fail(read)
+    Line.Stop(Read.Incomplete(p)) -> Bulk.More(p.need, p.scanned, true)
+    Line.Stop(read) -> Bulk.Fail(read)
     Line.Found(lf) ->
       case Integer.parse(line_text(buf, from + 1, lf))
-        none -> return Bulk.Fail(Read.Invalid("Protocol error: invalid bulk length"))
-        some(n) -> return bulk_slice(buf, from, n, lf + 1, held)
+        none -> Bulk.Fail(Read.Invalid("Protocol error: invalid bulk length"))
+        some(n) -> bulk_slice(buf, from, n, lf + 1, held)
       end
   end
 end
@@ -384,17 +340,11 @@ end
 # Redis does. A short buffer asks for the whole bulk at once, so the caller
 # joins its chunks one time instead of at each receive.
 def bulk_slice(buf: Bytes, from: Int, n: Int, start: Int, held: Int) -> Bulk
-  if n < 0 or n > MAX_BULK
-    return Bulk.Fail(Read.Invalid("Protocol error: invalid bulk length"))
-  end
+  return Bulk.Fail(Read.Invalid("Protocol error: invalid bulk length")) if n < 0 or n > MAX_BULK
 
-  if held + n > MAX_QUERY
-    return Bulk.Fail(Read.Overflow)
-  end
+  return Bulk.Fail(Read.Overflow) if held + n > MAX_QUERY
 
-  if start + n + 2 > buf.size
-    return Bulk.More(start + n + 2 - from, 0, false)
-  end
+  return Bulk.More(start + n + 2 - from, 0, false) if start + n + 2 > buf.size
 
-  return Bulk.Item(buf.slice(start, n), start + n + 2)
+  Bulk.Item(buf.slice(start, n), start + n + 2)
 end

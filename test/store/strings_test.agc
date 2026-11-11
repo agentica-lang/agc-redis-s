@@ -17,5 +17,5 @@ def test_append_limit_counts_the_whole_value() -> Result[Void]
   try Test.eq(Strings.append(some(second), "fg".bytes, 6).some?, false)
 
   whole = Value.Str("abcde".bytes)
-  return Test.eq(Strings.append(some(whole), "xy".bytes, 6).some?, false)
+  Test.eq(Strings.append(some(whole), "xy".bytes, 6).some?, false)
 end

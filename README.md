@@ -23,7 +23,7 @@ agentica agc_redis_s.agc --port 6379   # 0 picks a free port
 
 ## Develop
 
-Needs Agentica 0.28.0.
+Needs Agentica 0.30.0.
 
 ```text
 make check fmt-check test integration

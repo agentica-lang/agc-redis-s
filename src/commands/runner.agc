@@ -25,8 +25,8 @@ end
 ## that did not `join` gets no reply and changes nothing.
 export def run(table: Map[String, Command], store: Store, client_id: Int, argv: List[Bytes], now_ms: Int) -> Ran
   case store.sessions.get(client_id)
-    none -> return Ran(store: store, reply: "".bytes, close: false)
-    some(session) -> return run_for(table, store, client_id, session, argv, now_ms)
+    none -> Ran(store: store, reply: "".bytes, close: false)
+    some(session) -> run_for(table, store, client_id, session, argv, now_ms)
   end
 end
 
@@ -53,11 +53,9 @@ export def run_all(
     end
   end
 
-  if replies.size == 1
-    return Ran(store: current, reply: replies[0], close: closing)
-  end
+  return Ran(store: current, reply: replies[0], close: closing) if replies.size == 1
 
-  return Ran(store: current, reply: Bytes.concat(replies), close: closing)
+  Ran(store: current, reply: Bytes.concat(replies), close: closing)
 end
 
 def run_for(
@@ -87,22 +85,20 @@ def run_for(
     next_store = next_store.with(sessions: store.sessions.put(client_id, outcome.session))
   end
 
-  return Ran(store: next_store, reply: encoded(outcome.replies), close: outcome.effects.include?(Effect.Close))
+  Ran(store: next_store, reply: encoded(outcome.replies), close: outcome.effects.include?(Effect.Close))
 end
 
 # Almost every command makes one reply: it is not copied into a concat of one.
 def encoded(replies: List[Reply]) -> Bytes
-  if replies.size == 1
-    return Writer.encode(replies[0])
-  end
+  return Writer.encode(replies[0]) if replies.size == 1
 
-  return Bytes.concat(replies.map do |r| Writer.encode(r) end)
+  Bytes.concat(replies.map do |r| Writer.encode(r) end)
 end
 
 def apply(store: Store, db: Int, change: Change) -> Store
   case change
-    Change.Nothing -> return store
-    Change.Keyspace(keyspace) -> return store.with(databases: with_space(store.databases, db, keyspace))
-    Change.All(databases) -> return store.with(databases: databases)
+    Change.Nothing -> store
+    Change.Keyspace(keyspace) -> store.with(databases: with_space(store.databases, db, keyspace))
+    Change.All(databases) -> store.with(databases: databases)
   end
 end

@@ -11,21 +11,13 @@ NOT_INT = "-ERR value is not an integer or out of range\r\n"
 POSITIVE = "-ERR value is out of range, must be positive\r\n"
 SYNTAX = "-ERR syntax error\r\n"
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
-def bulk(text: String) -> String
-  return "$#{text.size}\r\n#{text}\r\n"
-end
+def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String
-  return "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
-end
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
 
-def numbers(items: List[Int]) -> String
-  return "*#{items.size}\r\n#{items.map do |item| ":#{item}\r\n" end.join("")}"
-end
+def numbers(items: List[Int]) -> String = "*#{items.size}\r\n#{items.map do |item| ":#{item}\r\n" end.join("")}"
 
 # Pops take one element or up to a count (a count past the length takes all);
 # RPOP with a count replies from the tail inwards. A missing key is nil, or a
@@ -73,7 +65,7 @@ def test_pops() -> Result[Void]
     "-ERR wrong number of arguments for 'lpop' command\r\n",
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # A popped-out list drops its deadline: a new list at the key has none.
@@ -92,7 +84,7 @@ def test_an_emptied_list_loses_its_deadline() -> Result[Void]
     ["EXISTS", "l"],
   ])
 
-  return Test.eq(got, ":1\r\n:1\r\n#{bulk("a")}:1\r\n:-1\r\n+OK\r\n:0\r\n:2\r\n:1\r\n:2\r\n:0\r\n")
+  Test.eq(got, ":1\r\n:1\r\n#{bulk("a")}:1\r\n:-1\r\n+OK\r\n:0\r\n:2\r\n:1\r\n:2\r\n:0\r\n")
 end
 
 # Every command that changes a list but leaves it non-empty keeps the deadline
@@ -118,7 +110,7 @@ def test_edits_keep_the_deadline() -> Result[Void]
   want = [":8\r\n", ":1\r\n", "+OK\r\n", ":1000\r\n", "+OK\r\n", ":1000\r\n"]
   want = want.concat([strings(["z", "b"]), ":1000\r\n", strings(["g"]), ":1000\r\n"])
   want = want.concat([":5\r\n", ":1000\r\n", ":1\r\n", ":1000\r\n"])
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # LSET replaces by index (negative from the tail) and answers OK; a missing key
@@ -163,7 +155,7 @@ def test_lset_and_ltrim() -> Result[Void]
     ":0\r\n",
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # LINSERT: the word is checked before the key, the first pivot from the head
@@ -210,7 +202,7 @@ def test_linsert_and_lrem() -> Result[Void]
     ":1\r\n",
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # LPOS: rank from the head or the tail, COUNT (0 is all), MAXLEN, indexes as
@@ -273,7 +265,7 @@ def test_lpos() -> Result[Void]
     zero,
   ]
 
-  return Test.eq(got, want.join(""))
+  Test.eq(got, want.join(""))
 end
 
 # The new commands on a string or a hash key answer WRONGTYPE; on a list key
@@ -299,7 +291,7 @@ def test_wrong_type() -> Result[Void]
     ["LPOS", "l", "a", "RANK", "0"],
   ]
 
-  return Test.eq(
+  Test.eq(
     ask(setup.concat(more)),
     "+OK\r\n:1\r\n:1\r\n#{WRONGTYPE}#{WRONGTYPE}#{NOT_INT}-ERR RANK can't be zero: use 1 to start from the first match, 2 from the second ... or use negative to start from the end of the list\r\n",
   )
@@ -313,7 +305,7 @@ def test_a_list_follows_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 99)
   ops = Prop.list(Prop.list(numbers, 4), 25)
-  return Prop.check(ops, Prop.Config(runs: 150)) do |list|
+  Prop.check(ops, Prop.Config(runs: 150)) do |list|
     padded = list.map do |op| op.concat([0, 0, 0, 0]) end
     expected = modeled(padded)
     requests = padded.map do |op| argv_of(op) end
@@ -324,20 +316,14 @@ end
 
 # Indexes reach 8 past either end of a list that is mostly shorter, and counts
 # go past its length, so the clamps and the take-all branches are met.
-def small(n: Int) -> Int
-  return n % 17 - 8
-end
+def small(n: Int) -> Int = n % 17 - 8
 
-def count_of(n: Int) -> Int
-  return n % 12
-end
+def count_of(n: Int) -> Int = n % 12
 
 def rank_of(n: Int) -> Int
-  if small(n) == 0
-    return 1
-  end
+  return 1 if small(n) == 0
 
-  return small(n)
+  small(n)
 end
 
 def argv_of(op: List[Int]) -> List[Bytes]
@@ -361,11 +347,9 @@ def argv_of(op: List[Int]) -> List[Bytes]
 end
 
 def at_most(count: Int, held: List[String]) -> Int
-  if count > held.size
-    return held.size
-  end
+  return held.size if count > held.size
 
-  return count
+  count
 end
 
 # The replies of the same operations over a plain List of text.
@@ -430,45 +414,33 @@ def modeled(ops: List[List[Int]]) -> String
     end
   end
 
-  return out
+  out
 end
 
-def listing(held: List[String]) -> String
-  return strings(held)
-end
+def listing(held: List[String]) -> String = strings(held)
 
 def popped_one(held: List[String], front: Bool) -> String
-  if held.empty?
-    return "$-1\r\n"
-  end
+  return "$-1\r\n" if held.empty?
 
-  if front
-    return bulk(held[0])
-  end
+  return bulk(held[0]) if front
 
-  return bulk(held[held.size - 1])
+  bulk(held[held.size - 1])
 end
 
 def popped_many(held: List[String], count: Int, front: Bool) -> String
-  if held.empty?
-    return "*-1\r\n"
-  end
+  return "*-1\r\n" if held.empty?
 
   taken = at_most(count, held)
-  if front
-    return strings(held.take(taken))
-  end
+  return strings(held.take(taken)) if front
 
-  return strings(held.drop(held.size - taken).reverse)
+  strings(held.drop(held.size - taken).reverse)
 end
 
 def after_pop(held: List[String], count: Int, front: Bool) -> List[String]
   taken = at_most(count, held)
-  if front
-    return held.drop(taken)
-  end
+  return held.drop(taken) if front
 
-  return held.take(held.size - taken)
+  held.take(held.size - taken)
 end
 
 def replaced(held: List[String], index: Int, value: String) -> List[String]
@@ -477,7 +449,7 @@ def replaced(held: List[String], index: Int, value: String) -> List[String]
     position = held.size + index
   end
 
-  return held.take(position).push(value).concat(held.drop(position + 1))
+  held.take(position).push(value).concat(held.drop(position + 1))
 end
 
 def trimmed(held: List[String], start: Int, stop: Int) -> List[String]
@@ -498,17 +470,15 @@ def trimmed(held: List[String], start: Int, stop: Int) -> List[String]
     end
   end
 
-  return kept
+  kept
 end
 
 def position_of(held: List[String], wanted: String) -> Int
   for i in 0...held.size
-    if held[i] == wanted
-      return i
-    end
+    return i if held[i] == wanted
   end
 
-  return -1
+  -1
 end
 
 # A positive count removes the first matches, a negative one the last, 0 all.
@@ -539,16 +509,14 @@ def removed(held: List[String], count: Int, wanted: String) -> List[String]
     end
   end
 
-  return kept
+  kept
 end
 
 def first_position(held: List[String], wanted: String) -> String
   at = position_of(held, wanted)
-  if at < 0
-    return "$-1\r\n"
-  end
+  return "$-1\r\n" if at < 0
 
-  return ":#{at}\r\n"
+  ":#{at}\r\n"
 end
 
 # LPOS with COUNT 0 and a rank: all the matches from the rank-th on, from the
@@ -571,5 +539,5 @@ def positions(held: List[String], wanted: String, rank: Int) -> String
     end
   end
 
-  return numbers(hits)
+  numbers(hits)
 end

@@ -4,9 +4,7 @@
 import Keyspace from "../../src/store/keyspace"
 import {Value} from "../../src/store/value"
 
-def named(index: Int) -> Bytes
-  return "k#{index}".bytes
-end
+def named(index: Int) -> Bytes = "k#{index}".bytes
 
 # `count` keys with the deadlines 10, 11, ... : key i dies after 10 + i.
 def filled(count: Int) -> Keyspace.Keyspace
@@ -15,7 +13,7 @@ def filled(count: Int) -> Keyspace.Keyspace
     space = Keyspace.expire_at(Keyspace.set(space, named(i), Value.Str("v".bytes)), named(i), 10 + i)
   end
 
-  return space
+  space
 end
 
 # Nothing is due until the clock passes the earliest deadline (a key lives up to
@@ -30,7 +28,7 @@ def test_sweep_drops_what_is_past() -> Result[Void]
   try Test.eq(Keyspace.sweep(swept, 11), swept)
   last = Keyspace.sweep(swept, 100)
   try Test.eq(Keyspace.size(last), 0)
-  return Test.eq(Keyspace.sweep(last, 1_000_000_000), last)
+  Test.eq(Keyspace.sweep(last, 1_000_000_000), last)
 end
 
 # One sweep removes at most 2000 keys, so a burst does not stop the store task;
@@ -39,7 +37,7 @@ def test_sweep_is_bounded_per_call() -> Result[Void]
   space = filled(2100)
   once = Keyspace.sweep(space, 100_000)
   try Test.eq(Keyspace.size(once), 100)
-  return Test.eq(Keyspace.size(Keyspace.sweep(once, 100_000)), 0)
+  Test.eq(Keyspace.size(Keyspace.sweep(once, 100_000)), 0)
 end
 
 # A write that keeps the deadline (`put`) keeps the one of a live key and drops
@@ -48,11 +46,11 @@ def test_put_keeps_only_a_live_deadline() -> Result[Void]
   space = filled(1)
   try Test.eq(Keyspace.deadline(Keyspace.put(space, named(0), Value.Str("w".bytes), 10), named(0)), some(10))
   try Test.eq(Keyspace.deadline(Keyspace.put(space, named(0), Value.Str("w".bytes), 11), named(0)), none)
-  return Test.eq(Keyspace.deadline(Keyspace.set(space, named(0), Value.Str("w".bytes)), named(0)), none)
+  Test.eq(Keyspace.deadline(Keyspace.set(space, named(0), Value.Str("w".bytes)), named(0)), none)
 end
 
 def expiring_at(space: Keyspace.Keyspace, name: String, when: Int) -> Keyspace.Keyspace
-  return Keyspace.expire_at(Keyspace.set(space, name.bytes, Value.Str("v".bytes)), name.bytes, when)
+  Keyspace.expire_at(Keyspace.set(space, name.bytes, Value.Str("v".bytes)), name.bytes, when)
 end
 
 def expiring_all(space: Keyspace.Keyspace, deadlines: Map[String, Int]) -> Keyspace.Keyspace
@@ -61,7 +59,7 @@ def expiring_all(space: Keyspace.Keyspace, deadlines: Map[String, Int]) -> Keysp
     result = expiring_at(result, name, deadlines.get(name, 0))
   end
 
-  return result
+  result
 end
 
 # Every way a key leaves its deadline (a delete, an overwrite, a PERSIST, a new
@@ -80,7 +78,7 @@ def test_index_follows_every_change_of_a_deadline() -> Result[Void]
   both = expiring_at(space, "b", 1900)
   rest = Keyspace.delete(both, "a".bytes).due
   try Test.eq(rest.keys, [1])
-  return Test.eq(rest.get(1, Set.new([])).to_a, ["b".bytes])
+  Test.eq(rest.get(1, Set.new([])).to_a, ["b".bytes])
 end
 
 # A sweep drops the due keys of every second up to the clock's, keeps the ones of
@@ -98,7 +96,7 @@ def test_sweep_reads_the_due_seconds_only() -> Result[Void]
   dense = expiring_all(Keyspace.Keyspace(), {"a": 1100, "b": 2100, "c": 3100, "d": 4100})
   try Test.eq(Keyspace.size(Keyspace.sweep(dense, 3500)), 1)
   later = Keyspace.sweep(Keyspace.delete(space, "a".bytes), 9000)
-  return Test.eq(Keyspace.size(later), 0)
+  Test.eq(Keyspace.size(later), 0)
 end
 
 # After a jump of the clock the sweep finds the due keys among the buckets, not
@@ -108,5 +106,5 @@ def test_sweep_after_a_long_gap() -> Result[Void]
   swept = Keyspace.sweep(space, 6_000_000)
   try Test.eq(Keyspace.size(swept), 1)
   try Test.eq(swept.due.size, 1)
-  return Test.eq(Keyspace.sweep(swept, 9_000_000_001).entries, {})
+  Test.eq(Keyspace.sweep(swept, 9_000_000_001).entries, {})
 end

@@ -10,18 +10,14 @@ WRONGTYPE = "-WRONGTYPE Operation against a key holding the wrong kind of value"
 NOT_INT = "-ERR value is not an integer or out of range"
 POSITIVE = "-ERR value is out of range, must be positive"
 
-def ask(requests: List[List[String]]) -> String
-  return talk(requests).reply.decode("latin-1").unwrap!
-end
+def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("latin-1").unwrap!
 
-def joined(lines: List[String]) -> String
-  return "#{lines.join("\r\n")}\r\n"
-end
+def joined(lines: List[String]) -> String = "#{lines.join("\r\n")}\r\n"
 
 # The members a reply lists, sorted: the lines that are no length marker.
 def names_in(reply: String) -> List[String]
   lines = reply.split("\r\n").select do |line| line != "" and not ["$", "*", ":"].include?(line.slice(0, 1).to_s) end
-  return lines.sort
+  lines.sort
 end
 
 # A member named twice counts once; SREM counts what was there; the key goes
@@ -57,7 +53,7 @@ def test_add_remove_and_ask() -> Result[Void]
   try Test.eq(got, joined(want))
   # The slot of a removed member is taken by the last one: nothing is lost.
   moved = ask([["SADD", "s", "a", "b", "c", "d"], ["SREM", "s", "a", "c"], ["SADD", "s", "e"], ["SMEMBERS", "s"]])
-  return Test.eq(names_in(moved), ["b", "d", "e"])
+  Test.eq(names_in(moved), ["b", "d", "e"])
 end
 
 # A set command on another type and another type's command on a set answer
@@ -113,7 +109,7 @@ def test_wrong_type_both_ways() -> Result[Void]
     "+string", WRONGTYPE,
   ]
 
-  return Test.eq(odd, joined(want))
+  Test.eq(odd, joined(want))
 end
 
 # A write keeps the deadline of a live set; the last member takes the key and so
@@ -147,7 +143,7 @@ def test_deadlines() -> Result[Void]
     ["TTL", "s"],
   ])
 
-  return Test.eq(
+  Test.eq(
     got,
     joined([":2", ":1", "*2\r\n$1\r\na\r\n$1\r\nb", ":1", ":-1", "$1\r\na", ":1", ":-1", ":1", ":1", ":-1"]),
   )
@@ -184,7 +180,7 @@ def test_spop() -> Result[Void]
 
   want = [":1", "*0", "$-1", "*0", POSITIVE, POSITIVE, "-ERR syntax error"]
 
-  return Test.eq(got, joined(want))
+  Test.eq(got, joined(want))
 end
 
 # SRANDMEMBER: one member; a count that covers the set gives all of it; a
@@ -228,12 +224,10 @@ def test_srandmember() -> Result[Void]
     "-ERR count is too large for the output limit",
   ]
 
-  return Test.eq(got, joined(want))
+  Test.eq(got, joined(want))
 end
 
-def pair(name: String) -> String
-  return "$#{name.size}\r\n#{name}\r\n"
-end
+def pair(name: String) -> String = "$#{name.size}\r\n#{name}\r\n"
 
 # SSCAN pages by the hash of the member, as SCAN does: COUNT 1 gives one member
 # and the hash of the next as the cursor; MATCH filters; TYPE is a syntax error;
@@ -270,7 +264,7 @@ def test_sscan() -> Result[Void]
     "-ERR syntax error",
   ]
 
-  return Test.eq(more, joined(want))
+  Test.eq(more, joined(want))
 end
 
 def argv_for(op: List[Int]) -> List[Bytes]
@@ -287,16 +281,12 @@ def argv_for(op: List[Int]) -> List[Bytes]
 end
 
 def has(members: List[Int], n: Int) -> Int
-  if members.include?(n)
-    return 1
-  end
+  return 1 if members.include?(n)
 
-  return 0
+  0
 end
 
-def without(members: List[Int], n: Int) -> List[Int]
-  return members.select do |one| one != n end
-end
+def without(members: List[Int], n: Int) -> List[Int] = members.select do |one| one != n end
 
 # SADD, SREM, SISMEMBER, SMISMEMBER and SCARD on one set against the model, and
 # the members at the end. 180 runs: it fails at 600 (the step limit).
@@ -304,7 +294,7 @@ def test_a_set_follows_a_model() -> Result[Void]
   table = Table.build()
   numbers = Prop.int(0, 255)
   ops = Prop.list(Prop.list(numbers, 4), 24)
-  return Prop.check(ops, Prop.Config(runs: 180)) do |list|
+  Prop.check(ops, Prop.Config(runs: 180)) do |list|
     held: List[Int] = []
     expected: List[String] = []
     for op in list

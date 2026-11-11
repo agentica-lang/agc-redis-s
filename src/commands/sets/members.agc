@@ -10,7 +10,7 @@ import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
 export def commands() -> List[Command]
-  return [
+  [
     Command(name: "sadd", arity: -3, handler: &sadd),
     Command(name: "srem", arity: -3, handler: &srem),
     Command(name: "sismember", arity: 3, handler: &sismember),
@@ -23,71 +23,67 @@ end
 # A member named twice counts once.
 def sadd(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return added(call, Sets.empty())
-    Held.Found(members) -> return added(call, members)
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> added(call, Sets.empty())
+    Held.Found(members) -> added(call, members)
   end
 end
 
 def added(call: Call, old: Members) -> Outcome
   grown = call.args.drop(1).reduce(old) do |members, member| Sets.add(members, member) end
   stored = Sets.store(call.keyspace, call.args[0], grown, call.now_ms)
-  return write(call, stored, Reply.Integer(Sets.size(grown) - Sets.size(old)))
+  write(call, stored, Reply.Integer(Sets.size(grown) - Sets.size(old)))
 end
 
 # The key goes with its last member.
 def srem(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
     Held.Found(old) ->
       kept = call.args.drop(1).reduce(old) do |members, member| Sets.remove(members, member) end
       removed = Sets.size(old) - Sets.size(kept)
-      if removed == 0
-        return reply(call, Reply.Integer(0))
-      end
+      return reply(call, Reply.Integer(0)) if removed == 0
 
-      return write(call, Sets.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Integer(removed))
+      write(call, Sets.store(call.keyspace, call.args[0], kept, call.now_ms), Reply.Integer(removed))
   end
 end
 
 def sismember(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Found(members) -> return reply(call, flag(Sets.has?(members, call.args[1])))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Found(members) -> reply(call, flag(Sets.has?(members, call.args[1])))
   end
 end
 
 def smismember(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Array(call.args.drop(1).map do |_| Reply.Integer(0) end))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Array(call.args.drop(1).map do |_| Reply.Integer(0) end))
     Held.Found(members) ->
-      return reply(call, Reply.Array(call.args.drop(1).map do |member| flag(Sets.has?(members, member)) end))
+      reply(call, Reply.Array(call.args.drop(1).map do |member| flag(Sets.has?(members, member)) end))
   end
 end
 
 def scard(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Integer(0))
-    Held.Found(members) -> return reply(call, Reply.Integer(Sets.size(members)))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Integer(0))
+    Held.Found(members) -> reply(call, Reply.Integer(Sets.size(members)))
   end
 end
 
 def smembers(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)
-    Held.Foreign -> return wrong_type(call)
-    Held.Missing -> return reply(call, Reply.Array([]))
-    Held.Found(members) -> return reply(call, Reply.Array(Sets.list(members).map do |member| Reply.Bulk(member) end))
+    Held.Foreign -> wrong_type(call)
+    Held.Missing -> reply(call, Reply.Array([]))
+    Held.Found(members) -> reply(call, Reply.Array(Sets.list(members).map do |member| Reply.Bulk(member) end))
   end
 end
 
 def flag(found: Bool) -> Reply
-  if found
-    return Reply.Integer(1)
-  end
+  return Reply.Integer(1) if found
 
-  return Reply.Integer(0)
+  Reply.Integer(0)
 end
