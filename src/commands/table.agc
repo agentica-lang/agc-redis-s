@@ -22,7 +22,9 @@ import ListSearch from "lists/search"
 import Numbers from "numbers"
 import Scan from "scan"
 import Server from "server"
+import SetAlgebra from "sets/algebra"
 import SetMembers from "sets/members"
+import SetMove from "sets/move"
 import SetRandom from "sets/random"
 import SetScan from "sets/scan"
 import StringEdit from "strings/edit"
@@ -58,6 +60,8 @@ export def build() -> Map[String, Command]
       .concat(SetMembers.commands())
       .concat(SetRandom.commands())
       .concat(SetScan.commands())
+      .concat(SetMove.commands())
+      .concat(SetAlgebra.commands())
   )
 
   return rows.reduce({}) do |table, row| table.put(row.name, row) end
