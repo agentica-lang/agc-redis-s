@@ -3,6 +3,12 @@
 import Errors from "errors"
 import Integer from "../resp/integer"
 
+## A reply of more items than this would pass the output cap of a client (dock
+## drops it at 8 MiB, and an item takes 6 bytes at least, `$0\r\n\r\n`): the
+## random commands refuse a negative count that asks for more, the only
+## difference from Redis, which would stream it.
+export MAX_ITEMS = 1_300_000
+
 ## The word as lowercase text, for matching option names without case. Latin-1
 ## maps every byte to a character, so this never fails.
 export def lower(word: Bytes) -> String

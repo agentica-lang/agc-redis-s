@@ -124,9 +124,9 @@ used by `QUIT`) is what the server does after the replies.
 
 ## How to add a command
 
-1. Pick the family file in `commands/` (`strings.agc`, `keys.agc`,
-   `hashes.agc`, ...). A new family is a new file with `commands()` and one
-   line in `commands/table.agc`.
+1. Pick the family file in `commands/` (`keys.agc`, `expire.agc`, ...) or the
+   file of its folder (`strings/set.agc`, `hashes/fields.agc`, ...). A new
+   family is a new file with `commands()` and one line in `commands/table.agc`.
 2. Add one `Command` row (lowercase name, arity as Redis counts it with the
    name, handler) and one handler `def name(call: Call) -> Outcome`. Answer
    with the helpers of `command.agc`; the keyspace of the reply is the one

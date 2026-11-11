@@ -180,6 +180,7 @@ def test_getex_setex_psetex() -> Result[Void]
       ["GETEX", "k", "EX", "0"],
       ["GETEX", "k", "PERSIST", "EX", "1"],
       ["GETEX", "k", "NX"],
+      ["GETEX", "k", "GET"],
       ["GETEX", "k", "PXAT", "1000"],
       ["GET", "k"],
       ["SETEX", "s", "10", "x"],
@@ -194,6 +195,7 @@ def test_getex_setex_psetex() -> Result[Void]
   want = ["$-1\r\n", "+OK\r\n", "$1\r\nv\r\n", "$1\r\nv\r\n", ":10\r\n", "$1\r\nv\r\n", ":-1\r\n"]
   want = want.concat([
     "-ERR invalid expire time in 'getex' command\r\n", "-ERR syntax error\r\n", "-ERR syntax error\r\n",
+    "-ERR syntax error\r\n",
   ])
 
   want = want.concat([

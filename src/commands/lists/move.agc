@@ -130,5 +130,5 @@ def popped_from(call: Call, key: Bytes, seq: Seq, side: End, count: Int) -> Outc
   end
 
   left = Lists.store(call.keyspace, key, Lists.drop(seq, side, taken), call.now_ms)
-  return write(call, left, Reply.Array([Reply.Bulk(key), Replies.popped(seq, side, count)]))
+  return write(call, left, Reply.Array([Reply.Bulk(key), Replies.popped(seq, side, taken)]))
 end
