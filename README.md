@@ -40,7 +40,7 @@ Read `AGENTS.md` for the layout and how to add a command.
 | 2 | Connection and server commands | done |
 | 3 | Strings | done |
 | 4 | Keys and expiry | done |
-| 5 | Hashes, lists, sets, sorted sets | in progress (hashes and lists done) |
+| 5 | Hashes, lists, sets, sorted sets | in progress (hashes, lists and sets done) |
 | 6 | Transactions, pub/sub | planned |
 | 7 | Blocking list commands | planned |
 | 8 | Compatibility and speed | planned |

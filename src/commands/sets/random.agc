@@ -1,9 +1,10 @@
 ## SPOP and SRANDMEMBER (t_set.c spopCommand, spopWithCountCommand,
 ## srandmemberCommand, srandmemberWithCountCommand). The count is read before
 ## the key. A missing key answers nil, or an empty array when a count was given;
-## a count of 0 on a live set answers an empty array. Each call costs O(size)
-## with a count that is neither 1 nor negative (selection sampling), O(log n)
-## otherwise.
+## a count of 0 on a live set answers an empty array. A call costs O(size) with a
+## count that is neither 1 nor negative (selection sampling), and also when the
+## count covers the whole set (SPOP and SRANDMEMBER both answer every member);
+## otherwise one `Map` step per draw.
 
 import Args from "../args"
 import Errors from "../errors"

@@ -27,7 +27,7 @@ class PurityTest(unittest.TestCase):
 
     def test_outcome_is_built_only_in_command_agc(self):
         text = "def f() -> Int\n  return Outcome(session: s)\nend\n"
-        self.assertTrue(problems_for({"src/commands/strings.agc": text}))
+        self.assertTrue(problems_for({"src/commands/strings/set.agc": text}))
         self.assertEqual(problems_for({"src/commands/command.agc": text}), [])
 
     def test_missing_src_fails(self):
