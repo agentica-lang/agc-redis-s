@@ -8,7 +8,7 @@
 import Args from "args"
 import Errors from "errors"
 import Integer from "../resp/integer"
-import {Call, Command, Outcome, fail, reply, write, write_all} from "command"
+import {Call, Command, Outcome, all_keys, fail, one_key, reply, two_keys, write, write_all} from "command"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
 import Glob from "../store/glob"
@@ -17,17 +17,17 @@ import {Value, type_name} from "../store/value"
 
 def commands() -> List[Command]
   [
-    Command(name: "del", arity: -2, handler: &del),
-    Command(name: "unlink", arity: -2, handler: &del),
-    Command(name: "exists", arity: -2, handler: &exists),
-    Command(name: "touch", arity: -2, handler: &exists),
-    Command(name: "type", arity: 2, handler: &type),
+    Command(name: "del", arity: -2, handler: &del, keys: all_keys()),
+    Command(name: "unlink", arity: -2, handler: &del, keys: all_keys()),
+    Command(name: "exists", arity: -2, handler: &exists, keys: all_keys()),
+    Command(name: "touch", arity: -2, handler: &exists, keys: all_keys()),
+    Command(name: "type", arity: 2, handler: &type, keys: one_key()),
     Command(name: "keys", arity: 2, handler: &keys),
-    Command(name: "rename", arity: 3, handler: &rename),
-    Command(name: "renamenx", arity: 3, handler: &renamenx),
+    Command(name: "rename", arity: 3, handler: &rename, keys: two_keys()),
+    Command(name: "renamenx", arity: 3, handler: &renamenx, keys: two_keys()),
     Command(name: "randomkey", arity: 1, handler: &randomkey),
-    Command(name: "move", arity: 3, handler: &move),
-    Command(name: "copy", arity: -3, handler: &copy),
+    Command(name: "move", arity: 3, handler: &move, keys: one_key()),
+    Command(name: "copy", arity: -3, handler: &copy, keys: two_keys()),
     Command(name: "swapdb", arity: 3, handler: &swapdb),
   ]
 end

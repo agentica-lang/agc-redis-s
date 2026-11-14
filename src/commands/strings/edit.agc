@@ -4,14 +4,17 @@
 import Access from "access"
 import Errors from "../errors"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, write, wrong_type} from "../command"
 import Keyspace from "../../store/keyspace"
 import {Reply} from "../../resp/reply"
 import Strings from "../../store/strings"
 import {Value, value_size} from "../../store/value"
 
 def commands() -> List[Command]
-  [Command(name: "append", arity: 3, handler: &append), Command(name: "setrange", arity: 4, handler: &setrange)]
+  [
+    Command(name: "append", arity: 3, handler: &append, keys: one_key()),
+    Command(name: "setrange", arity: 4, handler: &setrange, keys: one_key()),
+  ]
 end
 
 private

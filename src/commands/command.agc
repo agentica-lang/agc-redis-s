@@ -10,7 +10,7 @@
 
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
-import {Databases} from "../store/databases"
+import {Databases, Size} from "../store/databases"
 import {Keyspace} from "../store/keyspace"
 
 ## What the server does after it sent the replies.
@@ -25,6 +25,21 @@ enum Change
   Keyspace(Keyspace)
   ## The new value of all 16 databases (`FLUSHALL`).
   All(Databases)
+end
+
+## Where the keys of a request are, as Redis's first key, last key and step
+## (positions count the name as 0), so a request can go to the shard of its keys.
+enum Keys
+  ## No key: the request runs at the connection, on no data.
+  None
+  ## From `first` to `last` (-1: the last argument), every `step`.
+  Range(Int, Int, Int)
+  ## The argument at this position counts the keys that follow it (SINTERCARD).
+  Counted(Int)
+  ## Only the size of each database (DBSIZE, INFO): `Call.sizes`.
+  Sizes
+  ## Every key of every database (FLUSHALL, SCAN).
+  Whole
 end
 
 ## Everything a handler may read. New inputs are new fields with a default,
@@ -47,6 +62,9 @@ struct Call
   clients: Int = 0
   ## The command table, for `COMMAND`.
   table: Map[String, Command] = {}
+  ## The size of each database when the keys are split across shards (the
+  ## request runs on no data then); empty otherwise: count `databases`.
+  sizes: List[Size] = []
 end
 
 ## A handler's answer: the change to the data, zero or more replies in order,
@@ -68,7 +86,18 @@ struct Command
   ## A container (`CLIENT`) has no handler of its own: its first argument picks
   ## the row `client|id`. Redis calls these subcommands.
   container: Bool = false
+  ## A row that does not say reads every key, which is always right but slow.
+  keys: Keys = Keys.Whole
 end
+
+## The key of a command on one key.
+def one_key() -> Keys = Keys.Range(1, 1, 1)
+
+## The two keys of a command on a source and a destination.
+def two_keys() -> Keys = Keys.Range(1, 2, 1)
+
+## Every argument is a key.
+def all_keys() -> Keys = Keys.Range(1, -1, 1)
 
 def reply(call: Call, answer: Reply) -> Outcome = Outcome(session: call.session, replies: [answer])
 
@@ -105,7 +134,9 @@ def wrong_arity(call: Call) -> Outcome = fail(call, "ERR wrong number of argumen
 ## a subcommand. `dispatch` never calls its handler. A container that also
 ## works alone (`COMMAND`) is a `Command` with `container: true` and its own
 ## handler, which runs when no subcommand is given.
-def container(name: String) -> Command = Command(name: name, arity: -2, handler: &wrong_arity, container: true)
+def container(name: String) -> Command
+  Command(name: name, arity: -2, handler: &wrong_arity, container: true, keys: Keys.None)
+end
 
 ## What a command answers when the key holds another type (Redis's `checkType`).
 def wrong_type(call: Call) -> Outcome = fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")

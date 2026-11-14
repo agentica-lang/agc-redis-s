@@ -6,7 +6,7 @@ import Args from "args"
 import Errors from "errors"
 import Integer from "../resp/integer"
 import {
-  Call, Command, Outcome, fail, fail_bytes, reply, reply_and_close, reply_with_session, wrong_arity,
+  Call, Command, Keys, Outcome, fail, fail_bytes, reply, reply_and_close, reply_with_session, wrong_arity,
 } from "command"
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
@@ -17,11 +17,11 @@ REDIS_VERSION = "7.2.17"
 
 def commands() -> List[Command]
   [
-    Command(name: "ping", arity: -1, handler: &ping),
-    Command(name: "echo", arity: 2, handler: &echo),
-    Command(name: "quit", arity: -1, handler: &quit),
-    Command(name: "hello", arity: -1, handler: &hello),
-    Command(name: "select", arity: 2, handler: &select),
+    Command(name: "ping", arity: -1, handler: &ping, keys: Keys.None),
+    Command(name: "echo", arity: 2, handler: &echo, keys: Keys.None),
+    Command(name: "quit", arity: -1, handler: &quit, keys: Keys.None),
+    Command(name: "hello", arity: -1, handler: &hello, keys: Keys.None),
+    Command(name: "select", arity: 2, handler: &select, keys: Keys.None),
   ]
 end
 

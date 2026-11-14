@@ -4,19 +4,19 @@
 ## The members come in no order a client may rely on (Redis keeps small sets as
 ## an intset or a listpack and big ones in a hash table).
 
-import {Call, Command, Outcome, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, one_key, reply, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
 def commands() -> List[Command]
   [
-    Command(name: "sadd", arity: -3, handler: &sadd),
-    Command(name: "srem", arity: -3, handler: &srem),
-    Command(name: "sismember", arity: 3, handler: &sismember),
-    Command(name: "smismember", arity: -3, handler: &smismember),
-    Command(name: "scard", arity: 2, handler: &scard),
-    Command(name: "smembers", arity: 2, handler: &smembers),
+    Command(name: "sadd", arity: -3, handler: &sadd, keys: one_key()),
+    Command(name: "srem", arity: -3, handler: &srem, keys: one_key()),
+    Command(name: "sismember", arity: 3, handler: &sismember, keys: one_key()),
+    Command(name: "smismember", arity: -3, handler: &smismember, keys: one_key()),
+    Command(name: "scard", arity: 2, handler: &scard, keys: one_key()),
+    Command(name: "smembers", arity: 2, handler: &smembers, keys: one_key()),
   ]
 end
 

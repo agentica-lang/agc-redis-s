@@ -5,17 +5,17 @@
 import Args from "../args"
 import Errors from "../errors"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
 def commands() -> List[Command]
   [
-    Command(name: "lset", arity: 4, handler: &lset),
-    Command(name: "ltrim", arity: 4, handler: &ltrim),
-    Command(name: "linsert", arity: 5, handler: &linsert),
-    Command(name: "lrem", arity: 4, handler: &lrem),
+    Command(name: "lset", arity: 4, handler: &lset, keys: one_key()),
+    Command(name: "ltrim", arity: 4, handler: &ltrim, keys: one_key()),
+    Command(name: "linsert", arity: 5, handler: &linsert, keys: one_key()),
+    Command(name: "lrem", arity: 4, handler: &lrem, keys: one_key()),
   ]
 end
 

@@ -1,14 +1,17 @@
-## The server: parse the options, build the store, the command table and the
-## clock, start the store actor, accept clients. This is the one place that
+## The server: parse the options, build the shards, the command table and the
+## clock, start the shard actors, accept clients. This is the one place that
 ## builds them.
 
+import Actor from "std/actor"
 import Dock from "pkg/dock/dock"
 import Engine from "src/commands/engine"
 import Table from "src/commands/table"
 import Config from "src/server/config"
 import Connection from "src/server/connection"
 import Clock from "src/server/clock"
-import StoreActor from "src/server/store_actor"
+import Shard from "src/server/shard"
+import {Command} from "src/commands/command"
+import {Message} from "src/server/message"
 import {fresh} from "src/store/databases"
 
 INBOX_SIZE = 4096
@@ -25,25 +28,34 @@ def main() -> Void
 end
 
 def start(config: Config.Config) -> Void
-  setup = StoreActor.Setup(store: Engine.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
-  store = StoreActor.start(setup, INBOX_SIZE)
+  table = Table.build()
+  refs = (0...config.shards).to_a.map do |_| start_shard(table) end
+  addresses = refs.map do |ref| ref.address end
+  shards = Connection.Shards(addresses: addresses, table: table, now_ms: &Clock.now_ms, clients: Connection.counter())
   options = Dock.Config(port: config.port, host: config.bind, max_outbox_bytes: MAX_PENDING_BYTES)
-  hooked = Dock.on_close(options) do |conn| Connection.gone(store.address, conn.id) end
-  started = Dock.start(hooked) do |conn| Connection.serve(conn, store.address) end
+  hooked = Dock.on_close(options) do |_conn| Connection.gone(shards) end
+  started = Dock.start(hooked) do |conn| Connection.serve(conn, shards) end
   case started
     error(e) -> fail(e.message)
     ok(server) ->
-      # Without the store actor no command can run: dock stops the server, and
-      # `wait` returns.
-      Dock.watch(server, store.task)
+      # Without a shard no command on its keys can run: dock stops the server,
+      # and `wait` returns.
+      for ref in refs
+        Dock.watch(server, ref.task)
+      end
+
       # Tests start the server on port 0 and read the real port from this line.
       puts("ready #{config.bind}:#{server.port}")
       IO.flush()
       case Dock.wait(server)
         error(e) -> fail(e.message)
-        ok(_) -> fail("the store actor stopped")
+        ok(_) -> fail("a shard stopped")
       end
   end
+end
+
+def start_shard(table: Map[String, Command]) -> Actor.Ref[Shard.State, Message]
+  Shard.start(Shard.Setup(store: Engine.start(fresh()), table: table, now_ms: &Clock.now_ms), INBOX_SIZE)
 end
 
 def fail(text: String) -> Void

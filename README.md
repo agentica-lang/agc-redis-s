@@ -19,6 +19,7 @@ replication. Persistence and Lua may come later through a native module.
 
 ```text
 agentica agc_redis_s.agc --port 6379   # 0 picks a free port
+agentica agc_redis_s.agc --shards 4    # actors that split the keys by hash slot
 ```
 
 ## Develop

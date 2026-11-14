@@ -1,16 +1,16 @@
 ## The commands that read a deadline: TTL, PTTL, EXPIRETIME and PEXPIRETIME.
 ## Checked against Redis 7.2 expire.c (ttlGenericCommand).
 
-import {Call, Command, Outcome, reply} from "command"
+import {Call, Command, Outcome, one_key, reply} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 
 def commands() -> List[Command]
   [
-    Command(name: "ttl", arity: 2, handler: &ttl),
-    Command(name: "pttl", arity: 2, handler: &pttl),
-    Command(name: "expiretime", arity: 2, handler: &expiretime),
-    Command(name: "pexpiretime", arity: 2, handler: &pexpiretime),
+    Command(name: "ttl", arity: 2, handler: &ttl, keys: one_key()),
+    Command(name: "pttl", arity: 2, handler: &pttl, keys: one_key()),
+    Command(name: "expiretime", arity: 2, handler: &expiretime, keys: one_key()),
+    Command(name: "pexpiretime", arity: 2, handler: &pexpiretime, keys: one_key()),
   ]
 end
 

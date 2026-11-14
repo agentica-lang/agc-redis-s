@@ -2,14 +2,14 @@
 ## (commandCountCommand, commandDocsCommand) and redis-cli.c, which calls
 ## `COMMAND DOCS` to build its help and falls back to `COMMAND` on an error.
 
-import {Call, Command, Outcome, reply} from "command"
+import {Call, Command, Keys, Outcome, reply} from "command"
 import {Reply} from "../resp/reply"
 
 def commands() -> List[Command]
   [
-    Command(name: "command", arity: -1, handler: &all, container: true),
-    Command(name: "command|count", arity: 2, handler: &count),
-    Command(name: "command|docs", arity: -2, handler: &docs),
+    Command(name: "command", arity: -1, handler: &all, container: true, keys: Keys.None),
+    Command(name: "command|count", arity: 2, handler: &count, keys: Keys.None),
+    Command(name: "command|docs", arity: -2, handler: &docs, keys: Keys.None),
   ]
 end
 

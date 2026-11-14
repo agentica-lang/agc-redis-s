@@ -1,10 +1,10 @@
-## The store actor with a clock of the test's own: it never sleeps and never
+## A shard with a clock of the test's own: it never sleeps and never
 ## reads the real time.
 
 import Engine from "../../src/commands/engine"
 import Runner from "../../src/commands/runner"
 import {Store} from "../../src/commands/engine"
-import StoreActor from "../../src/server/store_actor"
+import Shard from "../../src/server/shard"
 import Table from "../../src/commands/table"
 import {request} from "../support"
 import {fresh} from "../../src/store/databases"
@@ -13,14 +13,14 @@ import {Message} from "../../src/server/message"
 def ran(store: Store, words: List[String]) -> Store
   table = Table.build()
   argv = words.map do |w| w.bytes end
-  Runner.run(table, Engine.join(store, 1), 1, argv, 0).store
+  Runner.run(table, store, Engine.client(1), argv, 0).store
 end
 
 def dbsize(store: Store, now: Int) -> Bytes
-  Runner.run(Table.build(), Engine.join(store, 1), 1, ["DBSIZE".bytes], now).reply
+  Runner.run(Table.build(), store, Engine.client(1), ["DBSIZE".bytes], now).reply
 end
 
-# The actor reads the time only through the clock it is given: a tick sweeps,
+# A shard reads the time only through the clock it is given: a tick sweeps,
 # and a key past its deadline is dropped only when the fake time has passed
 # SWEEP_MS since the last sweep (which starts at 0).
 def test_the_sweep_follows_the_given_clock() -> Result[Void]
@@ -34,8 +34,8 @@ def test_the_sweep_follows_the_given_clock() -> Result[Void]
 end
 
 def ticked(store: Store, clock: Fn[Int]) -> Store
-  setup = StoreActor.Setup(store: store, table: Table.build(), now_ms: clock)
-  StoreActor.handle(StoreActor.first(setup), Message.Tick).store
+  setup = Shard.Setup(store: store, table: Table.build(), now_ms: clock)
+  Shard.handle(Shard.first(setup), Message.Tick).store
 end
 
 def fixed_early() -> Int = Engine.SWEEP_MS - 1

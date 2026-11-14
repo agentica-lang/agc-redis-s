@@ -10,13 +10,16 @@ import Args from "../args"
 import Errors from "../errors"
 import Generator from "../../store/generator"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
 def commands() -> List[Command]
-  [Command(name: "spop", arity: -2, handler: &spop), Command(name: "srandmember", arity: -2, handler: &srandmember)]
+  [
+    Command(name: "spop", arity: -2, handler: &spop, keys: one_key()),
+    Command(name: "srandmember", arity: -2, handler: &srandmember, keys: one_key()),
+  ]
 end
 
 private

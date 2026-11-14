@@ -4,17 +4,17 @@
 ## persistCommand); the commands that read it are in ttl.agc.
 
 import Args from "args"
-import {Call, Command, Outcome, fail, fail_bytes, reply, write} from "command"
+import {Call, Command, Outcome, fail, fail_bytes, one_key, reply, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 
 def commands() -> List[Command]
   [
-    Command(name: "expire", arity: -3, handler: &expire),
-    Command(name: "pexpire", arity: -3, handler: &pexpire),
-    Command(name: "expireat", arity: -3, handler: &expireat),
-    Command(name: "pexpireat", arity: -3, handler: &pexpireat),
-    Command(name: "persist", arity: 2, handler: &persist),
+    Command(name: "expire", arity: -3, handler: &expire, keys: one_key()),
+    Command(name: "pexpire", arity: -3, handler: &pexpire, keys: one_key()),
+    Command(name: "expireat", arity: -3, handler: &expireat, keys: one_key()),
+    Command(name: "pexpireat", arity: -3, handler: &pexpireat, keys: one_key()),
+    Command(name: "persist", arity: 2, handler: &persist, keys: one_key()),
   ]
 end
 

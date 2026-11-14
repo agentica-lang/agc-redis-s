@@ -1,5 +1,6 @@
 ## Helpers shared by the tests.
 
+import Cluster from "../src/shards/cluster"
 import Engine from "../src/commands/engine"
 import Runner from "../src/commands/runner"
 import Writer from "../src/resp/writer"
@@ -8,11 +9,15 @@ import Dispatch from "../src/commands/dispatch"
 import {Ending} from "../src/resp/stream"
 import Stream from "../src/resp/stream"
 import Table from "../src/commands/table"
-import {Store} from "../src/commands/engine"
+import {Client} from "../src/commands/engine"
 import {Databases, fresh} from "../src/store/databases"
 import {Session} from "../src/session/session"
 import {Keyspace} from "../src/store/keyspace"
 import Prop from "pkg/prop/prop"
+
+## The shards of `exchange`: an odd number, so a mistake in the split of the
+## slots or in the join of the replies shows.
+SHARDS = 3
 
 ## What the client gets for the bytes it sent, and the databases and the session
 ## after them.
@@ -29,21 +34,22 @@ def request(words: List[Bytes]) -> Bytes
   Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
 
-## The whole path without a socket: the stream reader, then `Runner.run`, the
-## call the store actor makes, for one client with the id 1. `closed` is set by a
-## `Close` effect or a protocol error; what follows it is ignored.
+## The whole path without a socket: the stream reader, then each request on the
+## `SHARDS` shards its route names, as the server runs it, for one client with
+## the id 1. `closed` is set by a `Close` effect or a protocol error; what
+## follows it is ignored.
 def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
-  store = Engine.join(Engine.start(databases), 1)
   fed = Stream.feed(Stream.start(), bytes)
-  done = Runner.run_all(table, store, 1, fed.requests, now_ms)
+  done = Cluster.run_all(table, Cluster.start(databases, SHARDS), Engine.client(1), fed.requests, now_ms)
+  joined = Cluster.databases(done.cluster)
   replies = [done.reply]
-  return finish(done.store, replies, true) if done.close
+  return finish(joined, done.client, replies, true) if done.close
 
   case fed.ending
-    Ending.Open -> finish(done.store, replies, false)
-    Ending.Invalid(text) -> finish(done.store, replies.push(Writer.protocol_error(text)), true)
-    Ending.Overflow -> finish(done.store, replies, true)
+    Ending.Open -> finish(joined, done.client, replies, false)
+    Ending.Invalid(text) -> finish(joined, done.client, replies.push(Writer.protocol_error(text)), true)
+    Ending.Overflow -> finish(joined, done.client, replies, true)
   end
 end
 
@@ -51,15 +57,17 @@ end
 ## built once, without the reader (which has its laws). Much cheaper than
 ## `exchange`, so a law can run more cases.
 def run_requests(table: Map[String, Command], databases: Databases, argvs: List[List[Bytes]]) -> Exchange
-  store = Engine.join(Engine.start(databases), 1)
+  store = Engine.start(databases)
+  client = Engine.client(1)
   replies: List[Bytes] = []
   for argv in argvs
-    done = Runner.run(table, store, 1, argv, 0)
+    done = Runner.run(table, store, client, argv, 0)
     store = done.store
+    client = done.client
     replies = replies.push(done.reply)
   end
 
-  finish(store, replies, false)
+  finish(store.databases, client, replies, false)
 end
 
 ## A request of text words.
@@ -101,9 +109,8 @@ end
 
 private
 
-def finish(store: Store, replies: List[Bytes], closed: Bool) -> Exchange
-  session = store.sessions.get(1).unwrap_or(Session())
-  Exchange(databases: store.databases, session: session, reply: Bytes.concat(replies), closed: closed)
+def finish(databases: Databases, client: Client, replies: List[Bytes], closed: Bool) -> Exchange
+  Exchange(databases: databases, session: client.session, reply: Bytes.concat(replies), closed: closed)
 end
 
 def prepend(p: Prop.Pair[List[Int], List[List[Int]]]) -> List[List[Int]] = [p.first].concat(p.second)

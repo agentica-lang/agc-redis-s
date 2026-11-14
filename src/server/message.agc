@@ -1,23 +1,33 @@
-## What the connection handlers and dock's `on_close` tell the store actor. One
-## inbox carries all of them, so the store actor sees one order, and a
-## client's `Close` comes after the requests it sent. Replies go out through
-## `Dock.send` with the `Conn` a message carries.
+## What the connections tell a shard. A connection waits for the answers of one
+## chunk before it reads the next, so a shard sees a client's requests in order.
 
-import Dock from "pkg/dock/dock"
+import {Client} from "../commands/engine"
+import {Databases, Size} from "../store/databases"
+
+## What a shard lends: its data, its seed, and until when (`Time.monotonic_ms`)
+## it waits for them to come back; after that it keeps what it has.
+struct Loan
+  databases: Databases
+  seed: Int
+  until: Int
+end
+
+## What a shard gets back: its new data (none: nothing changed) and seed.
+struct Payback
+  databases: Optional[Databases]
+  seed: Int
+end
 
 enum Message
-  ## A new client: it gets a session.
-  Open(Dock.Conn)
-  ## The requests one receive completed, in order: the client and, for each,
-  ## the name and arguments as the client sent them. One message per chunk, so
-  ## the store actor answers them with one `Dock.send`.
-  Exec(Dock.Conn, List[List[Bytes]])
-  ## The client sent EOF, broke the protocol or sent too much: send the last
-  ## bytes, if any, then close. The handler handed the connection over, so it
-  ## stays open until the store actor closes it, after the queued replies.
-  Close(Dock.Conn, Bytes)
-  ## The connection ended, whichever way (dock's `on_close`): the session goes.
-  Gone(Int)
+  ## Requests of one client on keys of this shard, in order; the replies go
+  ## back on the channel. Only requests that run at the connection change the
+  ## session or close it, so the reply bytes are all it needs.
+  Run(List[List[Bytes]], Client, Channel[Bytes])
+  ## The size of each database, for DBSIZE and INFO.
+  Sizes(Channel[List[Size]])
+  ## Lend these keys (none: all of them) on the first channel, then handle
+  ## nothing until they come back on the second.
+  Lend(Optional[List[Bytes]], Channel[Loan], Channel[Payback])
   ## No request came for a while: time for the active expiry.
   Tick
 end

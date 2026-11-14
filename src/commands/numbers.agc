@@ -7,7 +7,7 @@
 
 import Errors from "errors"
 import Integer from "../resp/integer"
-import {Call, Command, Outcome, fail, wrong_type, write} from "command"
+import {Call, Command, Outcome, fail, one_key, write, wrong_type} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 import LongDouble from "../store/long_double"
@@ -16,11 +16,11 @@ import {Value, joined_text} from "../store/value"
 
 def commands() -> List[Command]
   [
-    Command(name: "incr", arity: 2, handler: &incr),
-    Command(name: "decr", arity: 2, handler: &decr),
-    Command(name: "incrby", arity: 3, handler: &incrby),
-    Command(name: "decrby", arity: 3, handler: &decrby),
-    Command(name: "incrbyfloat", arity: 3, handler: &incrbyfloat),
+    Command(name: "incr", arity: 2, handler: &incr, keys: one_key()),
+    Command(name: "decr", arity: 2, handler: &decr, keys: one_key()),
+    Command(name: "incrby", arity: 3, handler: &incrby, keys: one_key()),
+    Command(name: "decrby", arity: 3, handler: &decrby, keys: one_key()),
+    Command(name: "incrbyfloat", arity: 3, handler: &incrbyfloat, keys: one_key()),
   ]
 end
 

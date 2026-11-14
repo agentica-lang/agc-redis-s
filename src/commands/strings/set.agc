@@ -4,7 +4,7 @@
 ## value, also when NX or XX stops the write.
 
 import Access from "access"
-import {Call, Command, Outcome, fail, reply, wrong_arity, wrong_type, write} from "../command"
+import {Call, Command, Keys, Outcome, fail, one_key, reply, write, wrong_arity, wrong_type} from "../command"
 import Keyspace from "../../store/keyspace"
 import Options from "options"
 import {Reply} from "../../resp/reply"
@@ -12,12 +12,12 @@ import {Value} from "../../store/value"
 
 def commands() -> List[Command]
   [
-    Command(name: "set", arity: -3, handler: &set),
-    Command(name: "getset", arity: 3, handler: &getset),
-    Command(name: "getdel", arity: 2, handler: &getdel),
-    Command(name: "setnx", arity: 3, handler: &setnx),
-    Command(name: "mset", arity: -3, handler: &mset),
-    Command(name: "msetnx", arity: -3, handler: &msetnx),
+    Command(name: "set", arity: -3, handler: &set, keys: one_key()),
+    Command(name: "getset", arity: 3, handler: &getset, keys: one_key()),
+    Command(name: "getdel", arity: 2, handler: &getdel, keys: one_key()),
+    Command(name: "setnx", arity: 3, handler: &setnx, keys: one_key()),
+    Command(name: "mset", arity: -3, handler: &mset, keys: Keys.Range(1, -1, 2)),
+    Command(name: "msetnx", arity: -3, handler: &msetnx, keys: Keys.Range(1, -1, 2)),
   ]
 end
 

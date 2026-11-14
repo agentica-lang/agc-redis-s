@@ -3,7 +3,7 @@
 
 import Access from "access"
 import Args from "../args"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, write, wrong_type} from "../command"
 import Keyspace from "../../store/keyspace"
 import Options from "options"
 import {Reply} from "../../resp/reply"
@@ -11,9 +11,9 @@ import {Value} from "../../store/value"
 
 def commands() -> List[Command]
   [
-    Command(name: "getex", arity: -2, handler: &getex),
-    Command(name: "setex", arity: 4, handler: &setex),
-    Command(name: "psetex", arity: 4, handler: &psetex),
+    Command(name: "getex", arity: -2, handler: &getex, keys: one_key()),
+    Command(name: "setex", arity: 4, handler: &setex, keys: one_key()),
+    Command(name: "psetex", arity: 4, handler: &psetex, keys: one_key()),
   ]
 end
 

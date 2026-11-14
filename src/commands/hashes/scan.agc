@@ -3,13 +3,13 @@
 
 import Errors from "../errors"
 import Scan from "../scan"
-import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import ScanPages from "../../store/scan"
 import {Held} from "../../store/hashes"
 
-def commands() -> List[Command] = [Command(name: "hscan", arity: -3, handler: &hscan)]
+def commands() -> List[Command] = [Command(name: "hscan", arity: -3, handler: &hscan, keys: one_key())]
 
 private
 
