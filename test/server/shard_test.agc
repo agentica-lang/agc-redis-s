@@ -27,7 +27,8 @@ end
 # at 0 before the next message, whose own sweep would keep the key.
 def test_an_idle_shard_sweeps_on_its_timeout() -> Result[Void]
   CLOCK.put("now", 1000)
-  seeded = ran(Engine.start(fresh()), ["SET", "a", "1", "PX", "50"])
+  empty = Engine.start(fresh())
+  seeded = ran(empty, ["SET", "a", "1", "PX", "50"])
   shard = Shard.start(Shard.Setup(store: seeded, table: Table.build(), now_ms: &shared_clock), 16)
   Task.sleep(3 * Engine.SWEEP_MS)
   CLOCK.put("now", 0)
