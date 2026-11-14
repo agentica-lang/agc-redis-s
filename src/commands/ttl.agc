@@ -5,7 +5,7 @@ import {Call, Command, Outcome, reply} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "ttl", arity: 2, handler: &ttl),
     Command(name: "pttl", arity: 2, handler: &pttl),
@@ -13,6 +13,8 @@ export def commands() -> List[Command]
     Command(name: "pexpiretime", arity: 2, handler: &pexpiretime),
   ]
 end
+
+private
 
 def ttl(call: Call) -> Outcome = remaining(call, false, false)
 

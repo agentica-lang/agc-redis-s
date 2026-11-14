@@ -19,7 +19,7 @@ def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("l
 
 def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map { |item| bulk(item) }.join("")}"
 
 def popped(key: String, items: List[String]) -> String = "*2\r\n#{bulk(key)}#{strings(items)}"
 

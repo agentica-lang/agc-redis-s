@@ -10,12 +10,7 @@
 
 import {Value} from "value"
 
-NEVER = 9_223_372_036_854_775_807
-# The most keys one sweep removes, so a flood of keys that expire together does
-# not stop the store task for long; the next sweep goes on.
-SWEEP_BATCH = 2000
-
-export struct Keyspace
+struct Keyspace
   entries: Map[Bytes, Value] = {}
   ## Unix time in ms, for the keys that expire.
   deadlines: Map[Bytes, Int] = {}
@@ -28,16 +23,8 @@ export struct Keyspace
   next_due: Int = NEVER
 end
 
-# The progress of one sweep: `left` is the earliest deadline seen that was not
-# dropped, or the start of the first second not read.
-struct Sweeping
-  space: Keyspace
-  removed: Int
-  left: Int
-end
-
 ## The value of a key that is not expired.
-export def get(keyspace: Keyspace, key: Bytes, now_ms: Int) -> Optional[Value]
+def get(keyspace: Keyspace, key: Bytes, now_ms: Int) -> Optional[Value]
   return none if expired?(keyspace, key, now_ms)
 
   keyspace.entries.get(key)
@@ -45,12 +32,12 @@ end
 
 ## The deadline of a key (a missing key has none; call `get` first to ignore an
 ## expired one).
-export def deadline(keyspace: Keyspace, key: Bytes) -> Optional[Int] = keyspace.deadlines.get(key)
+def deadline(keyspace: Keyspace, key: Bytes) -> Optional[Int] = keyspace.deadlines.get(key)
 
 ## Stores a value and keeps the deadline of a key that is still alive, as
 ## Redis's `dbReplaceValue` does (INCR, APPEND, SETRANGE). The deadline of an
 ## expired key goes: the new value is a new key.
-export def put(keyspace: Keyspace, key: Bytes, value: Value, now_ms: Int) -> Keyspace
+def put(keyspace: Keyspace, key: Bytes, value: Value, now_ms: Int) -> Keyspace
   space = keyspace
   if expired?(keyspace, key, now_ms)
     space = unindexed(keyspace, key)
@@ -60,18 +47,18 @@ export def put(keyspace: Keyspace, key: Bytes, value: Value, now_ms: Int) -> Key
 end
 
 ## Stores a value and removes the deadline, as `SET` does without KEEPTTL.
-export def set(keyspace: Keyspace, key: Bytes, value: Value) -> Keyspace
+def set(keyspace: Keyspace, key: Bytes, value: Value) -> Keyspace
   space = unindexed(keyspace, key)
   space.with(entries: space.entries.put(key, value))
 end
 
-export def delete(keyspace: Keyspace, key: Bytes) -> Keyspace
+def delete(keyspace: Keyspace, key: Bytes) -> Keyspace
   space = unindexed(keyspace, key)
   space.with(entries: space.entries.delete(key))
 end
 
 ## Gives a key that exists a deadline.
-export def expire_at(keyspace: Keyspace, key: Bytes, when: Int) -> Keyspace
+def expire_at(keyspace: Keyspace, key: Bytes, when: Int) -> Keyspace
   space = unindexed(keyspace, key)
   id = bucket_of(when)
   bucket = space.due.get(id, Set.new([])).add(key)
@@ -83,26 +70,26 @@ export def expire_at(keyspace: Keyspace, key: Bytes, when: Int) -> Keyspace
 end
 
 ## Removes the deadline of a key.
-export def persist(keyspace: Keyspace, key: Bytes) -> Keyspace = unindexed(keyspace, key)
+def persist(keyspace: Keyspace, key: Bytes) -> Keyspace = unindexed(keyspace, key)
 
 ## The keys that are not expired, in no order.
-export def live_keys(keyspace: Keyspace, now_ms: Int) -> List[Bytes]
+def live_keys(keyspace: Keyspace, now_ms: Int) -> List[Bytes]
   return keyspace.entries.keys if keyspace.deadlines.empty?
 
   keyspace.entries.keys.select do |key| not expired?(keyspace, key, now_ms) end
 end
 
 ## The keys with a deadline, expired or not (`INFO` counts them as Redis does).
-export def expiring(keyspace: Keyspace) -> Int = keyspace.deadlines.size
+def expiring(keyspace: Keyspace) -> Int = keyspace.deadlines.size
 
 ## The keys in the maps, expired ones too.
-export def size(keyspace: Keyspace) -> Int = keyspace.entries.size
+def size(keyspace: Keyspace) -> Int = keyspace.entries.size
 
 ## The active expiry: drops the keys that are expired, at most `SWEEP_BATCH`
 ## per call. Free while no key is due (`next_due`); otherwise it reads only the
 ## buckets from the one of `next_due` to the one of the clock, never the other
 ## keys with a deadline.
-export def sweep(keyspace: Keyspace, now_ms: Int) -> Keyspace
+def sweep(keyspace: Keyspace, now_ms: Int) -> Keyspace
   return keyspace if now_ms <= keyspace.next_due
 
   last = bucket_of(now_ms)
@@ -123,6 +110,22 @@ export def sweep(keyspace: Keyspace, now_ms: Int) -> Keyspace
   return state.space.with(next_due: NEVER) if state.space.due.size == 0
 
   state.space.with(next_due: state.left)
+end
+
+private
+
+NEVER = 9_223_372_036_854_775_807
+
+# The most keys one sweep removes, so a flood of keys that expire together does
+# not stop the store task for long; the next sweep goes on.
+SWEEP_BATCH = 2000
+
+# The progress of one sweep: `left` is the earliest deadline seen that was not
+# dropped, or the start of the first second not read.
+struct Sweeping
+  space: Keyspace
+  removed: Int
+  left: Int
 end
 
 def sweep_bucket(state: Sweeping, id: Int, now_ms: Int) -> Sweeping

@@ -9,7 +9,7 @@ import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "sadd", arity: -3, handler: &sadd),
     Command(name: "srem", arity: -3, handler: &srem),
@@ -19,6 +19,8 @@ export def commands() -> List[Command]
     Command(name: "smembers", arity: 2, handler: &smembers),
   ]
 end
+
+private
 
 # A member named twice counts once.
 def sadd(call: Call) -> Outcome

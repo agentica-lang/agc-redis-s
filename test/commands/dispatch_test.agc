@@ -6,7 +6,7 @@ def count_args(call: Call) -> Outcome = reply(call, Reply.Integer(call.args.size
 
 def error_text(text: String) -> List[Reply] = [Reply.Error(text.bytes)]
 
-def letters(n: Int) -> String = (1..n).to_a.map do |_| "x" end.join("")
+def letters(n: Int) -> String = (1..n).to_a.map { |_| "x" }.join("")
 
 # One command of fixed arity (name and one argument) and one of variable arity
 # (name and at least one argument), to test the arity rule on its own.

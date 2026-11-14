@@ -158,15 +158,15 @@ def test_spop() -> Result[Void]
   setup = [["SADD", "s", "a", "b", "c", "d", "e"]]
   everything = ["a", "b", "c", "d", "e"]
   two = ask(setup.concat([["SPOP", "s", "2"], ["SMEMBERS", "s"], ["SCARD", "s"]]))
-  try Test.assert(two.starts_with?(":5\r\n*2\r\n") and two.ends_with?(":3\r\n"), "two popped: #{two}")
+  try Test.assert(two.start_with?(":5\r\n*2\r\n") and two.end_with?(":3\r\n"), "two popped: #{two}")
   try Test.eq(names_in(two).size, 5)
   try Test.eq(names_in(two).uniq, everything)
   one = ask(setup.concat([["SPOP", "s"], ["SMEMBERS", "s"]]))
-  try Test.assert(one.starts_with?(":5\r\n$1\r\n"), "one popped: #{one}")
+  try Test.assert(one.start_with?(":5\r\n$1\r\n"), "one popped: #{one}")
   try Test.eq(names_in(one).uniq, everything)
   try Test.eq(names_in(one).size, 5)
   every = ask(setup.concat([["SPOP", "s", "9"], ["EXISTS", "s"], ["SPOP", "s", "0"], ["SPOP", "s"]]))
-  try Test.assert(every.starts_with?(":5\r\n*5\r\n") and every.ends_with?(":0\r\n*0\r\n$-1\r\n"), every)
+  try Test.assert(every.start_with?(":5\r\n*5\r\n") and every.end_with?(":0\r\n*0\r\n$-1\r\n"), every)
   try Test.eq(names_in(every), everything)
   got = ask([
     ["SADD", "s", "a"],
@@ -192,7 +192,7 @@ def test_srandmember() -> Result[Void]
   all = ask(setup.concat([["SRANDMEMBER", "s", "9"], ["SRANDMEMBER", "s", "5"], ["SRANDMEMBER", "s", "0"]]))
   try Test.eq(names_in(all).size, 10)
   try Test.assert(all.include?("*5\r\n"), "the whole set")
-  try Test.assert(all.ends_with?("*0\r\n"), "zero is empty")
+  try Test.assert(all.end_with?("*0\r\n"), "zero is empty")
   # Ten draws of 3 different members.
   for _ in 0...10
     picked = ask(setup.concat([["SRANDMEMBER", "s", "3"]]))
@@ -201,9 +201,9 @@ def test_srandmember() -> Result[Void]
   end
 
   noise = ask(setup.concat([["SRANDMEMBER", "s", "-40"], ["SCARD", "s"]]))
-  try Test.assert(names_in(noise).size == 40 and noise.ends_with?(":5\r\n"), "forty members, the set stays")
+  try Test.assert(names_in(noise).size == 40 and noise.end_with?(":5\r\n"), "forty members, the set stays")
   single = ask(setup.concat([["SRANDMEMBER", "s"], ["SRANDMEMBER", "s", "1"]]))
-  try Test.assert(single.starts_with?(":5\r\n$1\r\n") and single.include?("*1\r\n$1\r\n"), "one member each")
+  try Test.assert(single.start_with?(":5\r\n$1\r\n") and single.include?("*1\r\n$1\r\n"), "one member each")
   got = ask([
     ["SRANDMEMBER", "none"],
     ["SRANDMEMBER", "none", "3"],
@@ -255,7 +255,7 @@ def test_sscan() -> Result[Void]
   want = [
     ":3",
     "+OK",
-    "*2\r\n$1\r\n0\r\n*1\r\n#{pair("b").trim}",
+    "*2\r\n$1\r\n0\r\n*1\r\n#{pair("b").strip}",
     "-ERR syntax error",
     "*2\r\n$1\r\n0\r\n*0",
     WRONGTYPE,
@@ -319,7 +319,7 @@ def test_a_set_follows_a_model() -> Result[Void]
     got = run_requests(table, fresh(), list.map do |op| argv_for(op) end)
     final = exchange(got.databases, words(["SMEMBERS", "s"]), 0).reply.decode("latin-1").unwrap!
     sorted = held.sort.map do |n| "m#{n}" end
-    shown = expected.map do |line| "#{line}\r\n" end.join("")
+    shown = expected.map { |line| "#{line}\r\n" }.join("")
     replies = got.reply.decode("latin-1").unwrap!
     Prop.eq("#{replies}#{names_in(final)}", "#{shown}#{sorted}")
   end

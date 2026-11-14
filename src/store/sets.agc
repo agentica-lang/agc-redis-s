@@ -8,20 +8,20 @@ import {Value} from "value"
 
 ## The members: `index` maps a member to its slot, `slots` the slot to the
 ## member. The slots are 0 up to size - 1 with no gap.
-export struct Members
+struct Members
   index: Map[Bytes, Int]
   slots: Map[Int, Bytes]
 end
 
 ## What a key holds, as a set command sees it.
-export enum Held
+enum Held
   Missing
   Found(Members)
   ## A live key of another type: the command answers WRONGTYPE.
   Foreign
 end
 
-export def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
+def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
   case Keyspace.get(keyspace, key, now_ms)
     none -> Held.Missing
     some(value) ->
@@ -34,7 +34,7 @@ end
 
 ## The keyspace with `members` at the key. A live key keeps its deadline (the
 ## write changes the old value); an empty set removes the key.
-export def store(keyspace: Keyspace.Keyspace, key: Bytes, members: Members, now_ms: Int) -> Keyspace.Keyspace
+def store(keyspace: Keyspace.Keyspace, key: Bytes, members: Members, now_ms: Int) -> Keyspace.Keyspace
   return Keyspace.delete(keyspace, key) if members.slots.empty?
 
   Keyspace.put(keyspace, key, Value.Members(members.index, members.slots), now_ms)
@@ -43,20 +43,20 @@ end
 ## The keyspace with `members` as a new value at the key, whatever it held and
 ## whatever deadline it had (setKey, which the STORE commands use); an empty set
 ## removes the key.
-export def replace(keyspace: Keyspace.Keyspace, key: Bytes, members: Members) -> Keyspace.Keyspace
+def replace(keyspace: Keyspace.Keyspace, key: Bytes, members: Members) -> Keyspace.Keyspace
   return Keyspace.delete(keyspace, key) if members.slots.empty?
 
   Keyspace.set(keyspace, key, Value.Members(members.index, members.slots))
 end
 
-export def empty() -> Members = Members(index: {}, slots: {})
+def empty() -> Members = Members(index: {}, slots: {})
 
-export def size(members: Members) -> Int = members.slots.size
+def size(members: Members) -> Int = members.slots.size
 
-export def has?(members: Members, member: Bytes) -> Bool = members.index.has_key?(member)
+def has?(members: Members, member: Bytes) -> Bool = members.index.has_key?(member)
 
 ## The set with `member` added; a member that is there leaves it as it is.
-export def add(members: Members, member: Bytes) -> Members
+def add(members: Members, member: Bytes) -> Members
   return members if has?(members, member)
 
   slot = members.slots.size
@@ -64,7 +64,7 @@ export def add(members: Members, member: Bytes) -> Members
 end
 
 ## The set without `member`: the last member takes its slot.
-export def remove(members: Members, member: Bytes) -> Members
+def remove(members: Members, member: Bytes) -> Members
   case members.index.get(member)
     none -> members
     some(slot) ->
@@ -80,7 +80,7 @@ end
 
 ## The sets at the keys, in order, a missing key being the empty set; none when
 ## a live key holds another type (Redis checks every key before it works).
-export def gather(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -> Optional[List[Members]]
+def gather(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -> Optional[List[Members]]
   found: List[Members] = []
   for key in keys
     case held(keyspace, key, now_ms)
@@ -94,13 +94,11 @@ export def gather(keyspace: Keyspace.Keyspace, keys: List[Bytes], now_ms: Int) -
 end
 
 ## The members of any of the sets, each once.
-export def union(sets: List[Members]) -> List[Bytes]
-  list(sets.reduce(empty()) do |all, members| merge(all, members) end)
-end
+def union(sets: List[Members]) -> List[Bytes] = list(sets.reduce(empty()) do |all, members| merge(all, members) end)
 
 ## The members of all the sets, taken from the smallest one: at most `limit` of
 ## them when `limit` is above 0 (SINTERCARD stops there).
-export def intersection(sets: List[Members], limit: Int) -> List[Bytes]
+def intersection(sets: List[Members], limit: Int) -> List[Bytes]
   return [] if sets.empty?
 
   ordered = sets.sort_by do |members| size(members) end
@@ -117,7 +115,7 @@ export def intersection(sets: List[Members], limit: Int) -> List[Bytes]
 end
 
 ## The members of the first set that no other one has.
-export def difference(sets: List[Members]) -> List[Bytes]
+def difference(sets: List[Members]) -> List[Bytes]
   return [] if sets.empty?
 
   others = sets.drop(1)
@@ -125,12 +123,14 @@ export def difference(sets: List[Members]) -> List[Bytes]
 end
 
 ## The member in a slot, 0 up to size - 1.
-export def at(members: Members, slot: Int) -> Bytes = members.slots.get(slot, "".bytes)
+def at(members: Members, slot: Int) -> Bytes = members.slots.get(slot, "".bytes)
 
 ## All the members, in slot order.
-export def list(members: Members) -> List[Bytes] = members.slots.values
+def list(members: Members) -> List[Bytes] = members.slots.values
 
-export def from_list(items: List[Bytes]) -> Members = items.reduce(empty()) do |members, item| add(members, item) end
+def from_list(items: List[Bytes]) -> Members = items.reduce(empty()) do |members, item| add(members, item) end
+
+private
 
 def merge(into: Members, more: Members) -> Members = list(more).reduce(into) do |all, member| add(all, member) end
 

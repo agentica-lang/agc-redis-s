@@ -10,6 +10,10 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
+def commands() -> List[Command] = [Command(name: "lpos", arity: -3, handler: &lpos)]
+
+private
+
 NO_COUNT = -1
 
 # `count` is -1 when COUNT was not given.
@@ -19,13 +23,11 @@ struct Options
   maxlen: Int
 end
 
-export def commands() -> List[Command] = [Command(name: "lpos", arity: -3, handler: &lpos)]
-
 # The options are read first, left to right, and the first error wins; then a
 # missing key answers nil (an empty array with COUNT).
 def lpos(call: Call) -> Outcome
   case options_of(call.args.drop(2))
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(options) ->
       case Lists.held(call.keyspace, call.args[0], call.now_ms)
         Held.Missing -> reply(call, nothing(options))

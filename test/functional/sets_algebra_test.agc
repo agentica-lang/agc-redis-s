@@ -69,9 +69,9 @@ end
 # array is its member names sorted, anything else is the reply line.
 def look(table: Map[String, Command], databases: Databases.Databases, request: List[String]) -> String
   reply = run_requests(table, databases, [request.map do |word| word.bytes end]).reply.decode("latin-1").unwrap!
-  return "[#{names_in(reply).join(",")}]" if reply.starts_with?("*")
+  return "[#{names_in(reply).join(",")}]" if reply.start_with?("*")
 
-  reply.trim
+  reply.strip
 end
 
 def looks(setup: List[List[String]], requests: List[List[String]]) -> List[String]
@@ -223,7 +223,7 @@ def capped(size: Int, limit: Int) -> Int
   limit
 end
 
-def shown(numbers: List[Int]) -> String = "[#{numbers.uniq.sort.map do |n| "m#{n}" end.join(",")}]"
+def shown(numbers: List[Int]) -> String = "[#{numbers.uniq.sort.map { |n| "m#{n}" }.join(",")}]"
 
 def minus(first: List[Int], others: List[List[Int]]) -> List[Int]
   first.select do |n| not others.any? do |other| other.include?(n) end end
@@ -242,7 +242,7 @@ end
 def stored_and_read(table: Map[String, Command], databases: Databases.Databases, name: String) -> List[String]
   after = run_requests(table, databases, [[name, "d", "s0", "s1", "s2"].map do |word| word.bytes end])
   [
-    after.reply.decode("latin-1").unwrap!.trim,
+    after.reply.decode("latin-1").unwrap!.strip,
     look(table, after.databases, ["SMEMBERS", "d"]),
     look(table, after.databases, ["EXISTS", "d"]),
   ]

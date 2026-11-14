@@ -6,13 +6,15 @@ import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "hgetall", arity: 2, handler: &hgetall),
     Command(name: "hkeys", arity: 2, handler: &hkeys),
     Command(name: "hvals", arity: 2, handler: &hvals),
   ]
 end
+
+private
 
 # RESP2 answers a map as a flat array: field, value, field, value.
 def hgetall(call: Call) -> Outcome = listing(call, true, true)

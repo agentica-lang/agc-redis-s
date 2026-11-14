@@ -3,12 +3,12 @@
 import OP from "std/option_parser"
 import {Opt, Kind} from "std/option_parser"
 
-export struct Config
+struct Config
   bind: String
   port: Int
 end
 
-export def parse(args: List[String]) -> Result[Config]
+def parse(args: List[String]) -> Result[Config]
   parser = OP.new(
     "agc-redis-s",
     "A Redis-compatible in-memory server",

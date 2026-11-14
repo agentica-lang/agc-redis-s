@@ -11,12 +11,14 @@ import LongDouble from "../../store/long_double"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "hincrby", arity: 4, handler: &hincrby),
     Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat),
   ]
 end
+
+private
 
 # The increment is read first, so a bad one wins over WRONGTYPE; then the
 # field, which must be an integer, and the overflow test of incrDecrCommand.

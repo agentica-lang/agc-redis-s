@@ -13,16 +13,8 @@
 ## KEYS does), `[a-]` is the range from `a` to `]`, a `[` without its `]` runs to
 ## the end of the pattern, and a `\` ends the pattern as itself.
 
-STAR = 42
-QUESTION = 63
-OPEN = 91
-CLOSE = 93
-BACKSLASH = 92
-CARET = 94
-DASH = 45
-
 ## True when `pattern` matches the whole of `text`.
-export def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
+def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
   return pattern.empty? if text.empty?
 
   p = 0
@@ -64,6 +56,22 @@ export def matches?(pattern: Bytes, text: Bytes, nocase: Bool = false) -> Bool
 
   p == pattern.size
 end
+
+private
+
+STAR = 42
+
+QUESTION = 63
+
+OPEN = 91
+
+CLOSE = 93
+
+BACKSLASH = 92
+
+CARET = 94
+
+DASH = 45
 
 # Matches the element that starts at `p` (not a `*`) against one byte: the
 # index after the element, or -1 when it does not match.

@@ -11,11 +11,13 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
-POSITIVE = "ERR value is out of range, must be positive"
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [Command(name: "lpop", arity: -2, handler: &lpop), Command(name: "rpop", arity: -2, handler: &rpop)]
 end
+
+private
+
+POSITIVE = "ERR value is out of range, must be positive"
 
 def lpop(call: Call) -> Outcome = pop(call, End.Head)
 
@@ -26,7 +28,7 @@ def pop(call: Call, side: End) -> Outcome
 
   if call.args.size == 2
     case Args.positive(call.args[1], POSITIVE)
-      error(text) -> return fail(call, text)
+      error(e) -> return fail(call, e.message)
       ok(count) -> return pop_some(call, side, count)
     end
   end

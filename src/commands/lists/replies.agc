@@ -5,12 +5,10 @@ import Writer from "../../resp/writer"
 import Lists from "../../store/lists"
 import {End, Seq, Span} from "../../store/lists"
 
-CRLF = "\r\n".bytes
-
 ## The elements of the span as an array of bulk strings, already in RESP form
 ## (`Reply.Raw`): the parts of every element go into one concat, with no
 ## `Reply` per element; `reverse` starts at the end of the span, as a pop from the tail replies.
-export def range(seq: Seq, span: Span, reverse: Bool) -> Reply
+def range(seq: Seq, span: Span, reverse: Bool) -> Reply
   parts = [Writer.array_header(span.last - span.first + 1)]
   for step in 0..(span.last - span.first)
     index = span.first + step
@@ -27,9 +25,13 @@ end
 
 ## The reply of a pop of `taken` elements (1 up to the length) from `side`: from
 ## the head in order, from the tail inwards.
-export def popped(seq: Seq, side: End, taken: Int) -> Reply
+def popped(seq: Seq, side: End, taken: Int) -> Reply
   case side
     End.Head -> range(seq, Span(first: 0, last: taken - 1), false)
     End.Tail -> range(seq, Span(first: Lists.length(seq) - taken, last: Lists.length(seq) - 1), true)
   end
 end
+
+private
+
+CRLF = "\r\n".bytes

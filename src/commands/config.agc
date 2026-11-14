@@ -11,6 +11,16 @@ import Databases from "../store/databases"
 import Glob from "../store/glob"
 import Strings from "../store/strings"
 
+def commands() -> List[Command]
+  [
+    container("config"),
+    Command(name: "config|get", arity: -3, handler: &get),
+    Command(name: "config|set", arity: -4, handler: &change),
+  ]
+end
+
+private
+
 # No persistence, so `save` is empty and `appendonly` is no.
 SETTINGS = [
   Setting(name: "databases", value: "#{Databases.COUNT}"),
@@ -27,14 +37,6 @@ SETTINGS = [
 struct Setting
   name: String
   value: String
-end
-
-export def commands() -> List[Command]
-  [
-    container("config"),
-    Command(name: "config|get", arity: -3, handler: &get),
-    Command(name: "config|set", arity: -4, handler: &change),
-  ]
 end
 
 # An exact name is echoed as typed; a setting already answered is not repeated.

@@ -9,13 +9,15 @@ import Options from "options"
 import {Reply} from "../../resp/reply"
 import {Value} from "../../store/value"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "getex", arity: -2, handler: &getex),
     Command(name: "setex", arity: 4, handler: &setex),
     Command(name: "psetex", arity: 4, handler: &psetex),
   ]
 end
+
+private
 
 # SETEX key seconds value and PSETEX key ms value: SET with EX or PX.
 def setex(call: Call) -> Outcome = set_expiring(call, true)
@@ -24,7 +26,7 @@ def psetex(call: Call) -> Outcome = set_expiring(call, false)
 
 def set_expiring(call: Call, seconds: Bool) -> Outcome
   case Args.expire_ms(call.args[1], seconds, true, call.now_ms, call.name)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(deadline) ->
       stored = Keyspace.set(call.keyspace, call.args[0], Value.Str(call.args[2]))
       write(call, Keyspace.expire_at(stored, call.args[0], deadline), Reply.Simple("OK"))
@@ -35,7 +37,7 @@ end
 # has passed deletes the key, after the value is read.
 def getex(call: Call) -> Outcome
   case Options.read(call.args.drop(1), Options.Form.GetEx)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(found) -> getex_with(call, found)
   end
 end
@@ -49,7 +51,7 @@ def getex_with(call: Call, found: Options.Options) -> Outcome
     none -> reply(call, Reply.NilBulk)
     some(text) ->
       case Options.deadline_of(call, found)
-        error(failure) -> fail(call, failure)
+        error(e) -> fail(call, e.message)
         ok(deadline) -> write(call, retimed(call, settled.keyspace, key, found, deadline), Reply.Bulk(text))
       end
   end

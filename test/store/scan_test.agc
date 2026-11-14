@@ -19,7 +19,7 @@ def walk(start: List[Bytes], count: Int) -> List[Bytes]
     break if cursor == 0
 
     step += 1
-    names = names.select do |key| key != "drop#{step}".bytes end.push("new#{step}".bytes)
+    names = names.select { |key| key != "drop#{step}".bytes }.push("new#{step}".bytes)
   end
 
   seen
@@ -43,7 +43,7 @@ def test_scan_returns_every_key_that_stays() -> Result[Void]
     stable = named("stay", input.first.uniq)
     start = stable.concat(named("drop", (1...12).to_a))
     seen = walk(start, input.second)
-    counts = stable.map do |key| seen.select do |other| other == key end.size end
+    counts = stable.map { |key| seen.select { |other| other == key }.size }
     Prop.eq(counts.select do |n| n != 1 end, [])
   end
 end

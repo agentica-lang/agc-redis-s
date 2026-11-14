@@ -5,14 +5,14 @@ import Keyspace from "keyspace"
 import {Value} from "value"
 
 ## What a key holds, as a hash command sees it.
-export enum Held
+enum Held
   Missing
   Fields(Map[Bytes, Bytes])
   ## A live key of another type: the command answers WRONGTYPE.
   Foreign
 end
 
-export def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
+def held(keyspace: Keyspace.Keyspace, key: Bytes, now_ms: Int) -> Held
   case Keyspace.get(keyspace, key, now_ms)
     none -> Held.Missing
     some(value) ->
@@ -25,7 +25,7 @@ end
 
 ## The keyspace with `fields` at the key. A live key keeps its deadline (the
 ## write changes the old value); an empty hash removes the key.
-export def store(keyspace: Keyspace.Keyspace, key: Bytes, fields: Map[Bytes, Bytes], now_ms: Int) -> Keyspace.Keyspace
+def store(keyspace: Keyspace.Keyspace, key: Bytes, fields: Map[Bytes, Bytes], now_ms: Int) -> Keyspace.Keyspace
   return Keyspace.delete(keyspace, key) if fields.empty?
 
   Keyspace.put(keyspace, key, Value.Hash(fields), now_ms)

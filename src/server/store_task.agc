@@ -8,32 +8,34 @@ import {Command} from "../commands/command"
 import {Store} from "../commands/engine"
 import {Message} from "message"
 
-BATCH = 32
-
 ## What the task works with; `main` builds it and the task builds nothing
 ## (`Task.spawn` passes one argument, so the inbox is in it). The
 ## clock is the only way the task learns the time, so a test passes its own.
-export struct Setup
+struct Setup
   inbox: Channel[Message]
   store: Store
   table: Map[String, Command]
   now_ms: Fn[Int]
 end
 
-struct State
-  store: Store
-  table: Map[String, Command]
-  swept_at: Int = 0
-end
-
 ## Runs until `inbox` is closed.
-export def run(setup: Setup) -> Void
+def run(setup: Setup) -> Void
   _ = serve(setup)
 end
 
 ## `run`, and the store it ends with.
-export def serve(setup: Setup) -> Store
+def serve(setup: Setup) -> Store
   take_all(setup.inbox, setup.now_ms, State(store: setup.store, table: setup.table)).store
+end
+
+private
+
+BATCH = 32
+
+struct State
+  store: Store
+  table: Map[String, Command]
+  swept_at: Int = 0
 end
 
 def take_all(inbox: Channel[Message], clock: Fn[Int], first: State) -> State

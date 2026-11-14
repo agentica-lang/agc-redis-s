@@ -15,9 +15,9 @@ def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("l
 
 def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map { |item| bulk(item) }.join("")}"
 
-def numbers(items: List[Int]) -> String = "*#{items.size}\r\n#{items.map do |item| ":#{item}\r\n" end.join("")}"
+def numbers(items: List[Int]) -> String = "*#{items.size}\r\n#{items.map { |item| ":#{item}\r\n" }.join("")}"
 
 # Pops take one element or up to a count (a count past the length takes all);
 # RPOP with a count replies from the tail inwards. A missing key is nil, or a
@@ -283,7 +283,7 @@ def test_wrong_type() -> Result[Void]
   ]
 
   setup = [["SET", "s", "1"], ["HSET", "h", "f", "1"], ["RPUSH", "l", "a"]]
-  try Test.eq(ask(setup.concat(on_other)), "+OK\r\n:1\r\n:1\r\n#{on_other.map do |_| WRONGTYPE end.join("")}")
+  try Test.eq(ask(setup.concat(on_other)), "+OK\r\n:1\r\n:1\r\n#{on_other.map { |_| WRONGTYPE }.join("")}")
   more = [
     ["SETRANGE", "l", "0", "x"],
     ["INCRBYFLOAT", "l", "1"],

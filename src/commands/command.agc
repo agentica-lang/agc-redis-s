@@ -14,12 +14,12 @@ import {Databases} from "../store/databases"
 import {Keyspace} from "../store/keyspace"
 
 ## What the server does after it sent the replies.
-export enum Effect
+enum Effect
   Close
 end
 
 ## What a command did to the data.
-export enum Change
+enum Change
   Nothing
   ## The new keyspace of the selected database.
   Keyspace(Keyspace)
@@ -30,7 +30,7 @@ end
 ## Everything a handler may read. New inputs are new fields with a default,
 ## except a struct, which cannot be a default (`session`).
 ## `name` is the lowercase name of the command; `execute` sets it.
-export struct Call
+struct Call
   ## The selected database, the same as `databases` at `session.db`.
   keyspace: Keyspace
   ## All the databases, to read: a change goes back in `Outcome.change`.
@@ -52,7 +52,7 @@ end
 ## A handler's answer: the change to the data, zero or more replies in order,
 ## and the effects. New outputs are new fields with a default. `session` is the
 ## client's state after the command; the helpers copy it from the `Call`.
-export struct Outcome
+struct Outcome
   session: Session
   change: Change = Change.Nothing
   replies: List[Reply] = []
@@ -61,7 +61,7 @@ end
 
 ## `arity` counts the command name, as Redis does: 2 is exactly one argument,
 ## -2 is one argument or more.
-export struct Command
+struct Command
   name: String
   arity: Int
   handler: Fn[Call, Outcome]
@@ -70,44 +70,42 @@ export struct Command
   container: Bool = false
 end
 
-export def reply(call: Call, answer: Reply) -> Outcome = Outcome(session: call.session, replies: [answer])
+def reply(call: Call, answer: Reply) -> Outcome = Outcome(session: call.session, replies: [answer])
 
 ## One reply and a new keyspace for the selected database: how a command that
 ## writes answers.
-export def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
+def write(call: Call, keyspace: Keyspace, answer: Reply) -> Outcome
   Outcome(session: call.session, change: Change.Keyspace(keyspace), replies: [answer])
 end
 
 ## One reply and a new value for all the databases.
-export def write_all(call: Call, databases: Databases, answer: Reply) -> Outcome
+def write_all(call: Call, databases: Databases, answer: Reply) -> Outcome
   Outcome(session: call.session, change: Change.All(databases), replies: [answer])
 end
 
 ## One reply and a new session state (`SELECT`, `CLIENT SETNAME`).
-export def reply_with_session(call: Call, answer: Reply, session: Session) -> Outcome
+def reply_with_session(call: Call, answer: Reply, session: Session) -> Outcome
   Outcome(session: session, replies: [answer])
 end
 
 ## One reply, then the server closes the connection.
-export def reply_and_close(call: Call, answer: Reply) -> Outcome
+def reply_and_close(call: Call, answer: Reply) -> Outcome
   Outcome(session: call.session, replies: [answer], effects: [Effect.Close])
 end
 
 ## An error reply; `text` starts with the code, as in `ERR syntax error`.
-export def fail(call: Call, text: String) -> Outcome = fail_bytes(call, text.bytes)
+def fail(call: Call, text: String) -> Outcome = fail_bytes(call, text.bytes)
 
 ## The same, for a text that echoes what the client sent.
-export def fail_bytes(call: Call, text: Bytes) -> Outcome = reply(call, Reply.Error(text))
+def fail_bytes(call: Call, text: Bytes) -> Outcome = reply(call, Reply.Error(text))
 
-export def wrong_arity(call: Call) -> Outcome = fail(call, "ERR wrong number of arguments for '#{call.name}' command")
+def wrong_arity(call: Call) -> Outcome = fail(call, "ERR wrong number of arguments for '#{call.name}' command")
 
 ## The row of a container such as `CLIENT`: Redis counts it as `-2`, a name and
 ## a subcommand. `dispatch` never calls its handler. A container that also
 ## works alone (`COMMAND`) is a `Command` with `container: true` and its own
 ## handler, which runs when no subcommand is given.
-export def container(name: String) -> Command = Command(name: name, arity: -2, handler: &wrong_arity, container: true)
+def container(name: String) -> Command = Command(name: name, arity: -2, handler: &wrong_arity, container: true)
 
 ## What a command answers when the key holds another type (Redis's `checkType`).
-export def wrong_type(call: Call) -> Outcome
-  fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")
-end
+def wrong_type(call: Call) -> Outcome = fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")

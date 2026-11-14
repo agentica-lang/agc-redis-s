@@ -10,7 +10,7 @@ import Options from "options"
 import {Reply} from "../../resp/reply"
 import {Value} from "../../store/value"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "set", arity: -3, handler: &set),
     Command(name: "getset", arity: 3, handler: &getset),
@@ -21,16 +21,18 @@ export def commands() -> List[Command]
   ]
 end
 
+private
+
 def set(call: Call) -> Outcome
   case Options.read(call.args.drop(2), Options.Form.Set)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(found) -> set_timed(call, found)
   end
 end
 
 def set_timed(call: Call, found: Options.Options) -> Outcome
   case Options.deadline_of(call, found)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(deadline) -> set_with(call, found, deadline)
   end
 end

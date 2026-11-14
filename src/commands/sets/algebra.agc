@@ -12,13 +12,7 @@ import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Members} from "../../store/sets"
 
-enum Op
-  Union
-  Inter
-  Diff
-end
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "sunion", arity: -2, handler: &sunion),
     Command(name: "sinter", arity: -2, handler: &sinter),
@@ -28,6 +22,14 @@ export def commands() -> List[Command]
     Command(name: "sdiffstore", arity: -3, handler: &sdiffstore),
     Command(name: "sintercard", arity: -3, handler: &sintercard),
   ]
+end
+
+private
+
+enum Op
+  Union
+  Inter
+  Diff
 end
 
 def sunion(call: Call) -> Outcome = listed(call, Op.Union)
@@ -71,12 +73,12 @@ end
 # compared with the arguments before the options, which are only LIMIT n.
 def sintercard(call: Call) -> Outcome
   case Args.at_least_one(call.args[0], "ERR numkeys should be greater than 0")
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(numkeys) ->
       return fail(call, "ERR Number of keys can't be greater than number of args") if numkeys > call.args.size - 1
 
       case limit_of(call.args.drop(numkeys + 1))
-        error(text) -> fail(call, text)
+        error(e) -> fail(call, e.message)
         ok(limit) -> counted(call, call.args.drop(1).take(numkeys), limit)
       end
   end

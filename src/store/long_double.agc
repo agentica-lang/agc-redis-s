@@ -8,39 +8,13 @@
 
 import Bignum from "bignum"
 
-# string2ld refuses a text of MAX_LONG_DOUBLE_CHARS (5 * 1024) bytes or more.
-MAX_CHARS = 5120
-MANTISSA_BITS = 64
-# The lowest bit of a denormal, and the highest exponent of a finite number.
-LOWEST_BIT = -16445
-HIGHEST_POWER = 16383
-# 10^4933 is above the largest finite value, 10^-4952 is under half of the
-# smallest denormal: past them the text is out of range for sure.
-DECIMAL_HIGH = 4933
-DECIMAL_LOW = -4952
-SATURATED = 1_000_000
-
 ## The value is `mant * 2^exp`, negated if `negative`; no mantissa is 0. An
 ## infinity is only read from the text "inf"; no operation makes one.
-export struct Ext
+struct Ext
   negative: Bool
   mant: List[Int]
   exp: Int
   infinite: Bool
-end
-
-# The parts of a number text: the digit values, how many follow the `.`, and the
-# exponent.
-struct Mantissa
-  digits: List[Int]
-  fraction_size: Int
-  power: Int
-end
-
-# What follows the number in the text: the end of a run of digits.
-struct Run
-  value: Int
-  end_at: Int
 end
 
 ## The number a text means as `strtold` reads it, or none when `string2ld`
@@ -48,7 +22,7 @@ end
 ## with an optional `.` and exponent, a hex float `0x1.8p3`, `inf`, `infinity`),
 ## `nan`, a space first, or out of range (an overflow, or a non-zero value that
 ## rounds to zero).
-export def parse(text: Bytes) -> Optional[Ext]
+def parse(text: Bytes) -> Optional[Ext]
   return none if text.empty? or text.size >= MAX_CHARS
 
   negative = text[0] == 45
@@ -68,7 +42,7 @@ end
 
 ## The sum of two numbers, or none when it is NaN or infinite: INCRBYFLOAT
 ## refuses both. One exact addition, then one rounding.
-export def add(a: Ext, b: Ext) -> Optional[Ext]
+def add(a: Ext, b: Ext) -> Optional[Ext]
   return none if a.infinite or b.infinite
 
   return finite(b) if a.mant.empty?
@@ -93,7 +67,7 @@ end
 
 ## The text INCRBYFLOAT stores: `%.17Lf` of the value with the trailing zeros
 ## and then a bare `.` cut, and "-0" as "0". The value is finite.
-export def format(x: Ext) -> Bytes
+def format(x: Ext) -> Bytes
   return "0".bytes if x.mant.empty?
 
   # The value times 10^17, rounded to a whole number as printf rounds.
@@ -123,6 +97,40 @@ export def format(x: Ext) -> Bytes
   return "#{sign}#{integer}".bytes if fraction.empty?
 
   "#{sign}#{integer}.#{fraction}".bytes
+end
+
+private
+
+# string2ld refuses a text of MAX_LONG_DOUBLE_CHARS (5 * 1024) bytes or more.
+MAX_CHARS = 5120
+
+MANTISSA_BITS = 64
+
+# The lowest bit of a denormal, and the highest exponent of a finite number.
+LOWEST_BIT = -16445
+
+HIGHEST_POWER = 16383
+
+# 10^4933 is above the largest finite value, 10^-4952 is under half of the
+# smallest denormal: past them the text is out of range for sure.
+DECIMAL_HIGH = 4933
+
+DECIMAL_LOW = -4952
+
+SATURATED = 1_000_000
+
+# The parts of a number text: the digit values, how many follow the `.`, and the
+# exponent.
+struct Mantissa
+  digits: List[Int]
+  fraction_size: Int
+  power: Int
+end
+
+# What follows the number in the text: the end of a run of digits.
+struct Run
+  value: Int
+  end_at: Int
 end
 
 # Zero, or a finite number that is not infinite (an overflow is infinite).

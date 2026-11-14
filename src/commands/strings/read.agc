@@ -7,7 +7,7 @@ import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Strings from "../../store/strings"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "get", arity: 2, handler: &get),
     Command(name: "mget", arity: -2, handler: &mget),
@@ -15,6 +15,8 @@ export def commands() -> List[Command]
     Command(name: "getrange", arity: 4, handler: &getrange),
   ]
 end
+
+private
 
 def get(call: Call) -> Outcome
   return wrong_type(call) if Access.foreign?(call, call.args[0])

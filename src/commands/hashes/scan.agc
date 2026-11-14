@@ -9,7 +9,9 @@ import Hashes from "../../store/hashes"
 import ScanPages from "../../store/scan"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command] = [Command(name: "hscan", arity: -3, handler: &hscan)]
+def commands() -> List[Command] = [Command(name: "hscan", arity: -3, handler: &hscan)]
+
+private
 
 # HSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
 # the key, then the options. The pages are ordered by the hash of the field
@@ -30,7 +32,7 @@ end
 
 def scan_fields(call: Call, fields: Map[Bytes, Bytes], cursor: Int) -> Outcome
   case Scan.read_options(call.args.drop(2), false)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(options) -> scan_page(call, fields, cursor, options)
   end
 end

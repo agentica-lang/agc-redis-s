@@ -16,7 +16,7 @@ import Prop from "pkg/prop/prop"
 
 ## What the client gets for the bytes it sent, and the databases and the session
 ## after them.
-export struct Exchange
+struct Exchange
   databases: Databases
   session: Session
   reply: Bytes
@@ -24,7 +24,7 @@ export struct Exchange
 end
 
 ## One request as the bytes a client sends: an array of bulk strings.
-export def request(words: List[Bytes]) -> Bytes
+def request(words: List[Bytes]) -> Bytes
   parts = words.map do |w| Bytes.concat(["$#{w.size}\r\n".bytes, w, "\r\n".bytes]) end
   Bytes.concat(["*#{words.size}\r\n".bytes].concat(parts))
 end
@@ -32,7 +32,7 @@ end
 ## The whole path without a socket: the stream reader, then `Runner.run`, the
 ## call the store task makes, for one client with the id 1. `closed` is set by a
 ## `Close` effect or a protocol error; what follows it is ignored.
-export def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
+def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()
   store = Engine.join(Engine.start(databases), 1)
   fed = Stream.feed(Stream.start(), bytes)
@@ -50,7 +50,7 @@ end
 ## For the laws over a model: requests already cut into words, run on a table
 ## built once, without the reader (which has its laws). Much cheaper than
 ## `exchange`, so a law can run more cases.
-export def run_requests(table: Map[String, Command], databases: Databases, argvs: List[List[Bytes]]) -> Exchange
+def run_requests(table: Map[String, Command], databases: Databases, argvs: List[List[Bytes]]) -> Exchange
   store = Engine.join(Engine.start(databases), 1)
   replies: List[Bytes] = []
   for argv in argvs
@@ -63,30 +63,28 @@ export def run_requests(table: Map[String, Command], databases: Databases, argvs
 end
 
 ## A request of text words.
-export def words(list: List[String]) -> Bytes = request(list.map do |w| w.bytes end)
+def words(list: List[String]) -> Bytes = request(list.map do |w| w.bytes end)
 
 ## The reply bytes of requests of text words, from empty databases.
-export def talk(requests: List[List[String]]) -> Exchange
-  exchange(fresh(), Bytes.concat(requests.map do |r| words(r) end))
-end
+def talk(requests: List[List[String]]) -> Exchange = exchange(fresh(), Bytes.concat(requests.map do |r| words(r) end))
 
 ## Bytes as a list of Ints, up to `max_size`: `prop` prints a counterexample as
 ## JSON, which `Bytes` cannot be. Empty and binary values are both made.
-export def byte_list(max_size: Int) -> Prop.Gen[List[Int]] = Prop.list(Prop.int(0, 255), max_size)
+def byte_list(max_size: Int) -> Prop.Gen[List[Int]] = Prop.list(Prop.int(0, 255), max_size)
 
 ## A request: one argument and up to `more` others, so never empty.
-export def argv_gen(max_size: Int, more: Int) -> Prop.Gen[List[List[Int]]]
+def argv_gen(max_size: Int, more: Int) -> Prop.Gen[List[List[Int]]]
   rest = Prop.list(byte_list(max_size), more)
   first = Prop.pair(byte_list(max_size), rest)
   Prop.map(first, &prepend)
 end
 
 ## The `Bytes` of a generated list.
-export def to_bytes(xs: List[Int]) -> Bytes = Bytes.from_list(xs).unwrap!
+def to_bytes(xs: List[Int]) -> Bytes = Bytes.from_list(xs).unwrap!
 
 ## One argument as Redis's `sdscatrepr` writes it, so an inline line can carry
 ## any bytes: double quotes, and `\x` for the bytes that do not print.
-export def quote(arg: Bytes) -> Bytes
+def quote(arg: Bytes) -> Bytes
   parts: List[Bytes] = ["\"".bytes]
   for byte in arg
     parts = parts.push(quote_byte(byte))
@@ -96,10 +94,12 @@ export def quote(arg: Bytes) -> Bytes
 end
 
 ## One command against a table of the test's own, for the dispatch rules.
-export def run_in(table: Map[String, Command], name: String, args: List[String]) -> Outcome
+def run_in(table: Map[String, Command], name: String, args: List[String]) -> Outcome
   call = Call(keyspace: Keyspace(), databases: fresh(), session: Session(), args: args.map do |a| a.bytes end)
   Dispatch.execute(table, name.bytes, call)
 end
+
+private
 
 def finish(store: Store, replies: List[Bytes], closed: Bool) -> Exchange
   session = store.sessions.get(1).unwrap_or(Session())

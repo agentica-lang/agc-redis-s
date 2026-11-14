@@ -13,23 +13,18 @@ import Keyspace from "../store/keyspace"
 import Scan from "../store/scan"
 import {type_name} from "../store/value"
 
-STAR = 42
-DEFAULT_COUNT = 10
-# A cursor past every hash: the scan answers an empty last page.
-BEYOND = 9_000_000_000
-
 ## What the options say.
-export struct Options
+struct Options
   count: Int = DEFAULT_COUNT
   pattern: Optional[Bytes] = none
   ## The lowercase name after TYPE; a name that is no type lists nothing.
   type: Optional[String] = none
 end
 
-export def commands() -> List[Command] = [Command(name: "scan", arity: -2, handler: &scan)]
+def commands() -> List[Command] = [Command(name: "scan", arity: -2, handler: &scan)]
 
 ## Whether a name passes MATCH (HSCAN filters field names with it too).
-export def matches?(options: Options, name: Bytes) -> Bool
+def matches?(options: Options, name: Bytes) -> Bool
   case options.pattern
     none -> true
     some(pattern) -> (pattern.size == 1 and pattern[0] == STAR) or Glob.matches?(pattern, name)
@@ -37,7 +32,7 @@ export def matches?(options: Options, name: Bytes) -> Bool
 end
 
 ## `typed` is true for SCAN; HSCAN has no TYPE option (a syntax error).
-export def read_options(words: List[Bytes], typed: Bool) -> Result[Options]
+def read_options(words: List[Bytes], typed: Bool) -> Result[Options]
   found = Options()
   i = 0
   while i < words.size
@@ -68,7 +63,7 @@ end
 ## `strtoul` in base 10: an optional `+` or `-`, then digits, no space; an empty
 ## text is 0. A number above 2^64 - 1 is an error (ERANGE), also after a `-`.
 ## `-N` is a huge number, which is a cursor past the end.
-export def cursor_of(text: Bytes) -> Optional[Int]
+def cursor_of(text: Bytes) -> Optional[Int]
   return some(0) if text.empty?
 
   negative = text[0] == 45
@@ -89,6 +84,15 @@ export def cursor_of(text: Bytes) -> Optional[Int]
   some(significant.reduce(0) do |total, byte| total * 10 + byte - 48 end)
 end
 
+private
+
+STAR = 42
+
+DEFAULT_COUNT = 10
+
+# A cursor past every hash: the scan answers an empty last page.
+BEYOND = 9_000_000_000
+
 def scan(call: Call) -> Outcome
   case cursor_of(call.args[0])
     none -> fail(call, Errors.INVALID_CURSOR)
@@ -98,7 +102,7 @@ end
 
 def scan_from(call: Call, cursor: Int) -> Outcome
   case read_options(call.args.drop(1), true)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(options) -> scan_page(call, cursor, options)
   end
 end

@@ -10,7 +10,7 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {Held, Seq} from "../../store/lists"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "lset", arity: 4, handler: &lset),
     Command(name: "ltrim", arity: 4, handler: &ltrim),
@@ -18,6 +18,8 @@ export def commands() -> List[Command]
     Command(name: "lrem", arity: 4, handler: &lrem),
   ]
 end
+
+private
 
 # The key is looked up first, then the type, then the index is read.
 def lset(call: Call) -> Outcome

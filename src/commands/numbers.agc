@@ -14,7 +14,7 @@ import LongDouble from "../store/long_double"
 import Strings from "../store/strings"
 import {Value, joined_text} from "../store/value"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "incr", arity: 2, handler: &incr),
     Command(name: "decr", arity: 2, handler: &decr),
@@ -23,6 +23,8 @@ export def commands() -> List[Command]
     Command(name: "incrbyfloat", arity: 3, handler: &incrbyfloat),
   ]
 end
+
+private
 
 def incr(call: Call) -> Outcome = add_to(call, 1)
 

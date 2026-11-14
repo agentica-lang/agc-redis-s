@@ -54,10 +54,10 @@ end
 # Many stars must not cost more than the pattern times the subject: the loops
 # ran for minutes when each star recursed.
 def test_many_stars_are_fast() -> Result[Void]
-  stars = (1..30).to_a.map do |_| "*" end.join("")
-  letters = (1..400).to_a.map do |_| "a" end.join("")
+  stars = (1..30).to_a.map { |_| "*" }.join("")
+  letters = (1..400).to_a.map { |_| "a" }.join("")
   try Test.assert(not hit?(stars + "z", letters), "stars then z")
-  spread = (1..20).to_a.map do |_| "*a" end.join("") + "b"
+  spread = (1..20).to_a.map { |_| "*a" }.join("") + "b"
   Test.assert(not hit?(spread, letters), "alternating")
 end
 

@@ -13,7 +13,7 @@ def ask(requests: List[List[String]]) -> String = talk(requests).reply.decode("l
 
 def bulk(text: String) -> String = "$#{text.size}\r\n#{text}\r\n"
 
-def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map do |item| bulk(item) end.join("")}"
+def strings(items: List[String]) -> String = "*#{items.size}\r\n#{items.map { |item| bulk(item) }.join("")}"
 
 # LPUSH puts its elements at the head one by one (so the last one is first),
 # RPUSH at the tail; the X forms need a live list. LINDEX counts from the tail
@@ -111,7 +111,7 @@ def test_wrong_type_both_ways() -> Result[Void]
   ]
 
   setup = [["SET", "s", "1"], ["HSET", "h", "f", "1"], ["RPUSH", "l", "a"]]
-  try Test.eq(ask(setup.concat(on_other)), "+OK\r\n:1\r\n:1\r\n#{on_other.map do |_| WRONGTYPE end.join("")}")
+  try Test.eq(ask(setup.concat(on_other)), "+OK\r\n:1\r\n:1\r\n#{on_other.map { |_| WRONGTYPE }.join("")}")
 
   on_list = [
     ["GET", "l"],
@@ -127,7 +127,7 @@ def test_wrong_type_both_ways() -> Result[Void]
   odd = [["MGET", "l", "s"], ["SETNX", "l", "x"], ["TYPE", "l"], ["TYPE", "s"]]
   try Test.eq(
     ask(setup.concat(on_list).concat(odd)),
-    "+OK\r\n:1\r\n:1\r\n#{on_list.map do |_| WRONGTYPE end.join("")}*2\r\n$-1\r\n$1\r\n1\r\n:0\r\n+list\r\n+string\r\n",
+    "+OK\r\n:1\r\n:1\r\n#{on_list.map { |_| WRONGTYPE }.join("")}*2\r\n$-1\r\n$1\r\n1\r\n:0\r\n+list\r\n+string\r\n",
   )
 
   first = talk(setup)
