@@ -29,7 +29,8 @@ src/
                      package `dock`. config, connection (the handler dock
                      runs per client: routes the requests, keeps the
                      session), shard (an actor that owns some slots),
-                     message, clock
+                     message, clock, shutdown (SIGTERM and SIGINT stop
+                     gracefully)
 test/functional/     one `<domain>_test.agc` per domain
 test/                unit tests of pure logic, the same path as the source;
                      support.agc: `exchange` (request bytes -> reader ->

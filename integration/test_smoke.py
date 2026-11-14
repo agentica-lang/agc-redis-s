@@ -36,11 +36,11 @@ class SmokeTest(unittest.TestCase):
                 self.assertEqual(sock.recv(10), b"")
             self.assert_nothing_runs_after_quit(server)
             self.assert_replies_survive_eof(server)
-            # SIGTERM with a client connected and idle must still end the
-            # process and free the port.
+            # SIGTERM with a client connected and idle stops the server as
+            # Redis does: gracefully, exit code 0, the port free.
             with server.connect():
                 server.proc.send_signal(signal.SIGTERM)
-                server.proc.wait(timeout=10)
+                self.assertEqual(server.proc.wait(timeout=10), 0)
             self.assertTrue(port_is_free(server.port))
         finally:
             server.stop()
