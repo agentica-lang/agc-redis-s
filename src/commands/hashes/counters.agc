@@ -80,7 +80,7 @@ def add_float(call: Call, fields: Map[Bytes, Bytes], delta: LongDouble.Ext) -> O
       case LongDouble.add(old, delta)
         none -> fail(call, Errors.NAN_OR_INFINITY)
         some(sum) ->
-          shown = LongDouble.format(sum)
+          shown = LongDouble.formatted(sum)
           stored = Hashes.store(call.keyspace, call.args[0], fields.put(field, shown), call.now_ms)
           write(call, stored, Reply.Bulk(shown))
       end

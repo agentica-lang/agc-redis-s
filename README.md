@@ -36,7 +36,7 @@ With more than one shard:
 
 ## Develop
 
-Needs Agentica 0.31.1.
+Needs Agentica 0.32.0-alpha.1.
 
 ```text
 make check fmt-check test integration

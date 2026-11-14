@@ -17,7 +17,7 @@ end
 def shown(total: Optional[LongDouble.Ext]) -> String
   case total
     none -> "err"
-    some(z) -> LongDouble.format(z).decode("latin-1").unwrap!
+    some(z) -> LongDouble.formatted(z).decode("latin-1").unwrap!
   end
 end
 

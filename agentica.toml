@@ -1,5 +1,5 @@
 name = "agc-redis-s"
-agentica = "0.31.1"
+agentica = "0.32.0-alpha.1"
 
 # Every bare `end` is followed by an empty line, as `agentica fmt` writes it.
 [style]

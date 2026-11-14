@@ -140,10 +140,9 @@ def borrowed(shards: Shards, ids: List[Int], keys: Optional[List[Bytes]], client
   loans: List[Loan] = []
   failed = Done(client: client, reply: "".bytes, close: true)
   for id in ids
-    out: Channel[Loan] = Channel.new(1)
     back: Channel[Payback] = Channel.new(1)
     backs = backs.push(back)
-    case loaned(shards.addresses[id], keys, out, back, wait_ms(shards, loans))
+    case loaned(shards.addresses[id], keys, back, wait_ms(shards, loans))
       some(loan) -> loans = loans.push(loan)
       none -> return released(backs, failed)
     end
@@ -305,26 +304,15 @@ def released(backs: List[Channel[Payback]], failed: Done) -> Done
   failed
 end
 
-# The loan of one shard; a give-up closes `out`, so a loan sent just before is
-# still taken and one sent after fails at the shard.
-def loaned(
-  address: Address[Message],
-  keys: Optional[List[Bytes]],
-  out: Channel[Loan],
-  back: Channel[Payback],
-  wait: Int,
-) -> Optional[Loan]
+# The loan of one shard. A call that times out closes its reply channel, so the
+# shard's `Actor.reply` fails and the shard keeps its data; a loan given just
+# before is still returned.
+def loaned(address: Address[Message], keys: Optional[List[Bytes]], back: Channel[Payback], wait: Int) -> Optional[Loan]
   return none if wait <= 0
 
-  return none if not Actor.cast(address, Message.Lend(keys, out, back), SEND_MS).ok?
-
-  case out.recv(wait)
+  called = Actor.call(address, wait) do |out| Message.Lend(keys, out, back) end
+  case called
     ok(loan) -> some(loan)
-    error(_) ->
-      out.close
-      case out.recv(0)
-        ok(loan) -> some(loan)
-        error(_) -> none
-      end
+    error(_) -> none
   end
 end
