@@ -69,6 +69,26 @@ def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
   stopped(rig)
 end
 
+# A lend whose caller gave up: the call closed its reply channel, so the
+# shard's `Actor.reply` fails and the shard goes on at once instead of waiting
+# its 5 s for keys nobody took.
+def test_a_given_up_loan_does_not_hold_the_shard() -> Result[Void]
+  rig = started_with(1, 16, 5000)
+  shards = rig.shards
+  out: Channel[Loan] = Channel.new(1)
+  held: Channel[Payback] = Channel.new(1)
+  try shards.addresses[0].send(Message.Lend(none, out, held), 1000)
+  _ = try out.recv(1000)
+  back: Channel[Payback] = Channel.new(1)
+  late = Actor.call(shards.addresses[0], 100) do |reply| Message.Lend(none, reply, back) end
+  try Test.eq(late.ok?, false)
+  held.close
+  started = Time.monotonic_ms
+  try Test.eq(try get(shards, 0, "a".bytes), "$-1\r\n")
+  try Test.assert(Time.monotonic_ms - started < 1000, "the shard waited for a loan nobody took")
+  stopped(rig)
+end
+
 def started() -> Rig = started_with(2, 16, LEND_MS)
 
 def started_with(count: Int, capacity: Int, lend_ms: Int) -> Rig

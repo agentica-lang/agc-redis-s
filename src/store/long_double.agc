@@ -1,7 +1,7 @@
 ## The `long double` of Redis, for INCRBYFLOAT: on x86-64 Linux the x87 extended
 ## format, a 64-bit mantissa and an exponent down to 2^-16445 (denormals) and up
 ## to 2^16383. `parse` is `strtold` as `string2ld` (util.c) calls it, `add` is
-## one exactly rounded addition, `format` is `ld2string` in its human friendly
+## one exactly rounded addition, `formatted` is `ld2string` in its human friendly
 ## mode (`%.17Lf`, then the trailing zeros and a bare `.` cut). A `Float` is a
 ## 53-bit double and would print other digits (0.1 as 0.10000000000000001), so
 ## this keeps the number as an exact binary value in a `Bignum`.
@@ -67,7 +67,7 @@ end
 
 ## The text INCRBYFLOAT stores: `%.17Lf` of the value with the trailing zeros
 ## and then a bare `.` cut, and "-0" as "0". The value is finite.
-def format(x: Ext) -> Bytes
+def formatted(x: Ext) -> Bytes
   return "0".bytes if x.mant.empty?
 
   # The value times 10^17, rounded to a whole number as printf rounds.

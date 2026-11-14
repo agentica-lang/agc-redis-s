@@ -58,7 +58,7 @@ def handle(state: State, message: Message) -> State
     Message.Tick -> current
     Message.Run(requests, client, answer) -> run(current, requests, client, answer, now)
     Message.Sizes(answer) ->
-      _ = answer.send(Databases.sizes(current.store.databases), 0)
+      _ = Actor.reply(answer, Databases.sizes(current.store.databases))
       current
     Message.Lend(keys, out, back) -> lend(current, keys, out, back)
   end
@@ -89,7 +89,7 @@ end
 # A connection that gave up closed its channel: the answer has nobody to go to.
 def run(state: State, requests: List[List[Bytes]], client: Engine.Client, answer: Channel[Bytes], now: Int) -> State
   done = Runner.run_all(state.table, state.store, client, requests, now)
-  _ = answer.send(done.reply, 0)
+  _ = Actor.reply(answer, done.reply)
   state.with(store: done.store)
 end
 
@@ -98,7 +98,7 @@ end
 def lend(state: State, keys: Optional[List[Bytes]], out: Channel[Loan], back: Channel[Payback]) -> State
   until = Time.monotonic_ms + state.lend_ms
   loan = Loan(databases: Cluster.lent(state.store, keys), seed: state.store.seed, until: until)
-  return state if not out.send(loan, 0).ok?
+  return state if not Actor.reply(out, loan)
 
   case back.recv([until - Time.monotonic_ms, 0].max.unwrap!)
     ok(returned) -> state.with(store: Cluster.taken_back(state.store, keys, returned.databases, returned.seed))

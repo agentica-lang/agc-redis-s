@@ -99,7 +99,7 @@ def float_sum(call: Call, key: Bytes, total: Optional[LongDouble.Ext]) -> Outcom
   case total
     none -> fail(call, Errors.NAN_OR_INFINITY)
     some(sum) ->
-      shown = LongDouble.format(sum)
+      shown = LongDouble.formatted(sum)
       write(call, Keyspace.put(call.keyspace, key, Value.Str(shown), call.now_ms), Reply.Bulk(shown))
   end
 end
