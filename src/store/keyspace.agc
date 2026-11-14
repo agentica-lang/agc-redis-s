@@ -1,5 +1,5 @@
 ## The keyspace: key to value, and the deadline of the keys that have one. It is
-## plain data, so a command returns the new keyspace and the store task keeps
+## plain data, so a command returns the new keyspace and the store actor keeps
 ## it. It never reads the clock: a function that depends on the time takes
 ## `now_ms` as an argument.
 ##
@@ -117,7 +117,7 @@ private
 NEVER = 9_223_372_036_854_775_807
 
 # The most keys one sweep removes, so a flood of keys that expire together does
-# not stop the store task for long; the next sweep goes on.
+# not stop the store actor for long; the next sweep goes on.
 SWEEP_BATCH = 2000
 
 # The progress of one sweep: `left` is the earliest deadline seen that was not

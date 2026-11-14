@@ -1,6 +1,6 @@
 ## What one client carries between its commands: the selected database and
 ## what it told about itself. It is an input of a handler (`Call.session`) and
-## an output (`Outcome.session`); the store task keeps it per client.
+## an output (`Outcome.session`); the store actor keeps it per client.
 
 struct Session
   ## Index of the selected database.

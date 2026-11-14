@@ -7,7 +7,7 @@ is in the GitHub issues, one milestone per release.
 ## Map
 
 ```text
-agc_redis_s.agc      main: options, start the store task, start dock
+agc_redis_s.agc      main: options, start the store actor, start dock
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
                      types), writer.agc (reply to bytes), reader.agc (bytes
@@ -22,14 +22,14 @@ src/
                      per command family
   server/            I/O SHELL: tasks, the clock; the sockets are the
                      package `dock`. config, connection (the handler dock
-                     runs per client), store_task (owns the data), message,
+                     runs per client), store_actor (owns the data), message,
                      clock
 test/functional/     one `<domain>_test.agc` per domain
 test/                unit tests of pure logic, the same path as the source;
                      support.agc: `exchange` (request bytes -> reader ->
                      dispatch -> store -> writer -> reply bytes), `request`
-integration/         one smoke test of the real binary (Python, standard
-                     library only)
+integration/         a smoke test and a stress test of the real binary
+                     (Python, standard library only)
 tools/               check_purity.py and its tests (Python, standard library)
 ```
 
@@ -67,7 +67,7 @@ tools/               check_purity.py and its tests (Python, standard library)
     `test/functional/<domain>_test.agc` feeds request bytes to `exchange` and
     compares the reply bytes and the keyspace. Plain paths, error texts and
     arity are tested here. The helper calls `commands/runner.agc`, the same
-    code as the store task; only its read loop mirrors the server's, and the
+    code as the store actor; only its read loop mirrors the server's, and the
     smoke test is the check of the real loop.
   - Unit tests only where a pure function has real logic (RESP reader and
     writer, glob, ranges, score formatting).
@@ -87,8 +87,10 @@ tools/               check_purity.py and its tests (Python, standard library)
   - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
     proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
     port; it also checks that nothing runs behind a QUIT and that a client
-    that left is not counted. The sockets, the accept loop and the outboxes are
-    the package `dock`, tested there.
+    that left is not counted. One stress test runs many pipelining clients at
+    once and checks that each gets its replies in order and no write is lost.
+    The sockets, the accept loop and the outboxes are the package `dock`,
+    tested there.
 - One concern per file. A family past 300 lines becomes a folder
   `commands/<family>/`. Server-wide commands (`INFO`, `CLIENT`, `CONFIG`,
   `DBSIZE`, `FLUSHALL`) get their own file, not `connection.agc`.
@@ -102,23 +104,24 @@ tools/               check_purity.py and its tests (Python, standard library)
 
 - `make check` (purity, `agentica check`, lint), `make fmt-check`,
   `make test` (the tests of `test/` and `tools/`), `make integration`
-  (the smoke test). `agentica fmt src test`
+  (the smoke and stress tests). `agentica fmt src test`
   fixes formatting.
 
 ## How a command travels
 
 ```text
-request (name, args) -> store task (owns the keyspace; one message at a time,
+request (name, args) -> store actor (owns the keyspace; one message at a time,
 like Redis) -> commands/dispatch (table lookup, arity check) -> handler
 -> Outcome (new keyspace, replies, effects) -> RESP writer -> the client
 ```
 
-One task owns the data and takes messages from a channel, so no command needs
-a lock. `dock` runs one handler task per connection, which reads and sends the
-requests to the store task. The store task answers with `Dock.send` and the
+One actor (`std/actor`) owns the data and handles its messages one at a time,
+so no command needs a lock; a ticker task wakes it for the active expiry when
+no request comes. `dock` runs one handler task per connection, which reads and sends the
+requests to the store actor. The store actor answers with `Dock.send` and the
 `Conn` the message carries: dock queues the bytes in the outbox of the client
 and never waits, so replies and later pushes (pub/sub) go out in the order the
-store task decided, and a client that does not read is dropped at the cap
+store actor decided, and a client that does not read is dropped at the cap
 (`max_outbox_bytes`, 8 MiB). An `Effect` (today only `Close`,
 used by `QUIT`) is what the server does after the replies.
 
@@ -160,11 +163,11 @@ the field or the folder when it needs it.
   returns all 16 (`FLUSHALL`; `MOVE`, `SWAPDB` and `COPY ... DB` later).
 - Blocking commands (`BLPOP`, ...): a "blocking allowed" input in `Call`,
   because `MULTI` runs them without blocking. A handler that cannot answer
-  returns a park effect (keys, deadline); the store task keeps the parked
+  returns a park effect (keys, deadline); the store actor keeps the parked
   clients in order, retries them after each write, and a timer wakes the
   expired ones.
 - Pub/sub: a pure registry (channel to client ids) in `pubsub/`. A handler
-  returns a publish effect; the store task pushes to the outboxes and drops a
+  returns a publish effect; the store actor pushes to the outboxes and drops a
   subscriber whose outbox is full.
 - Server-wide state for `INFO` and `CLIENT`: a pure struct built by `server/`
   and passed in `Call`.

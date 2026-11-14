@@ -30,7 +30,7 @@ def request(words: List[Bytes]) -> Bytes
 end
 
 ## The whole path without a socket: the stream reader, then `Runner.run`, the
-## call the store task makes, for one client with the id 1. `closed` is set by a
+## call the store actor makes, for one client with the id 1. `closed` is set by a
 ## `Close` effect or a protocol error; what follows it is ignored.
 def exchange(databases: Databases, bytes: Bytes, now_ms: Int = 0) -> Exchange
   table = Table.build()

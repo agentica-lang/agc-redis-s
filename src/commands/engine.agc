@@ -1,15 +1,15 @@
-## The data the store task owns and the two things it does between requests:
+## The data the store actor owns and the two things it does between requests:
 ## clients joining and leaving, and the timed sweep of expired keys. Pure, so
-## the store task and the functional tests call the same functions.
+## the store actor and the functional tests call the same functions.
 
 import {Session} from "../session/session"
 import {Databases, sweep} from "../store/databases"
 
-## How often the store task sweeps; Redis runs its active expiry 10 times a
+## How often the store actor sweeps; Redis runs its active expiry 10 times a
 ## second (hz 10).
 SWEEP_MS = 100
 
-## All the data the store task owns: the databases and the session of each
+## All the data the store actor owns: the databases and the session of each
 ## connected client, by client id.
 struct Store
   databases: Databases
@@ -35,6 +35,6 @@ def leave(store: Store, client_id: Int) -> Store = store.with(sessions: store.se
 def sweep_due?(last_ms: Int, now_ms: Int) -> Bool = now_ms < last_ms or now_ms - last_ms >= SWEEP_MS
 
 ## The active expiry: the keys that are past their deadline are dropped. The
-## store task calls it on a timer; no reply depends on it, as an expired key
+## store actor calls it on a timer; no reply depends on it, as an expired key
 ## already counts as missing.
 def expire_keys(store: Store, now_ms: Int) -> Store = store.with(databases: sweep(store.databases, now_ms))
