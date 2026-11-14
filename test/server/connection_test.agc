@@ -58,7 +58,8 @@ def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
   back: Channel[Payback] = Channel.new(1)
   try shards.addresses[0].send(Message.Lend(none, out, back), 1000)
   _ = try out.recv(1000)
-  try shards.addresses[0].send(Message.Tick, 1000)
+  # The ticker may have filled the inbox already: full either way.
+  _ = shards.addresses[0].send(Message.Tick, 0)
   requests = [["PING".bytes], ["SET".bytes, "a".bytes, "1".bytes], ["PING".bytes]]
   done = Connection.answer(shards, Engine.start(fresh()), Engine.client(1), requests)
   back.close
