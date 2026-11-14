@@ -1,5 +1,5 @@
 ## The server: parse the options, build the store, the command table and the
-## clock, start the store task, accept clients. This is the one place that
+## clock, start the store actor, accept clients. This is the one place that
 ## builds them.
 
 import Dock from "pkg/dock/dock"
@@ -8,9 +8,8 @@ import Table from "src/commands/table"
 import Config from "src/server/config"
 import Connection from "src/server/connection"
 import Clock from "src/server/clock"
-import {Message} from "src/server/message"
+import StoreActor from "src/server/store_actor"
 import {fresh} from "src/store/databases"
-import StoreTask from "src/server/store_task"
 
 INBOX_SIZE = 4096
 # Phase 0 cap on the replies a client has not read yet. Over it dock drops the
@@ -26,24 +25,23 @@ def main() -> Void
 end
 
 def start(config: Config.Config) -> Void
-  inbox: Channel[Message] = Channel.new(INBOX_SIZE)
-  setup = StoreTask.Setup(inbox: inbox, store: Engine.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
-  store = Task.spawn(&StoreTask.run, setup)
+  setup = StoreActor.Setup(store: Engine.start(fresh()), table: Table.build(), now_ms: &Clock.now_ms)
+  store = StoreActor.start(setup, INBOX_SIZE)
   options = Dock.Config(port: config.port, host: config.bind, max_outbox_bytes: MAX_PENDING_BYTES)
-  hooked = Dock.on_close(options) do |conn| Connection.gone(inbox, conn.id) end
-  started = Dock.start(hooked) do |conn| Connection.serve(conn, inbox) end
+  hooked = Dock.on_close(options) do |conn| Connection.gone(store.address, conn.id) end
+  started = Dock.start(hooked) do |conn| Connection.serve(conn, store.address) end
   case started
     error(e) -> fail(e.message)
     ok(server) ->
-      # Without the store task no command can run: dock stops the server, and
+      # Without the store actor no command can run: dock stops the server, and
       # `wait` returns.
-      Dock.watch(server, store)
+      Dock.watch(server, store.task)
       # Tests start the server on port 0 and read the real port from this line.
       puts("ready #{config.bind}:#{server.port}")
       IO.flush()
       case Dock.wait(server)
         error(e) -> fail(e.message)
-        ok(_) -> fail("the store task stopped")
+        ok(_) -> fail("the store actor stopped")
       end
   end
 end

@@ -31,7 +31,7 @@ def test_sweep_drops_what_is_past() -> Result[Void]
   Test.eq(Keyspace.sweep(last, 1_000_000_000), last)
 end
 
-# One sweep removes at most 2000 keys, so a burst does not stop the store task;
+# One sweep removes at most 2000 keys, so a burst does not stop the store actor;
 # the next sweep finishes.
 def test_sweep_is_bounded_per_call() -> Result[Void]
   space = filled(2100)
