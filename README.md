@@ -23,6 +23,9 @@ agentica agc_redis_s.agc --port 6379   # 0 picks a free port
 agentica agc_redis_s.agc --shards 4    # actors that split the keys by hash slot
 ```
 
+SIGTERM or SIGINT stops it as Redis does: no new clients, the queued replies
+go out, and it exits 0.
+
 With more than one shard:
 
 - A command on the keys of several shards (MSET, RENAME, SUNIONSTORE, ...) or
