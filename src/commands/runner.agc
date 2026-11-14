@@ -8,7 +8,7 @@ import {Client, Store} from "engine"
 import Generator from "../store/generator"
 import {Reply} from "../resp/reply"
 import Writer from "../resp/writer"
-import {Databases, space_at, with_space} from "../store/databases"
+import {Databases, Size, space_at, with_space} from "../store/databases"
 
 ## The store and the client after the request, the bytes to send, whether to
 ## close the connection after them, and whether the data changed.
@@ -23,7 +23,16 @@ end
 ## `argv` is the name and the arguments as the client sent them. The handler
 ## sees the keyspace of the selected database; when it wrote, its new keyspace
 ## goes back to that database, even if the command selects another one.
-def run(table: Map[String, Command], store: Store, client: Client, argv: List[Bytes], now_ms: Int) -> Ran
+## `sizes`: the sizes of the databases of every shard, for a request that runs
+## on no data (`Route.Sizes`).
+def run(
+  table: Map[String, Command],
+  store: Store,
+  client: Client,
+  argv: List[Bytes],
+  now_ms: Int,
+  sizes: List[Size] = [],
+) -> Ran
   first = Generator.advance(store.seed, now_ms)
   session = client.session
   call = Call(
@@ -36,6 +45,7 @@ def run(table: Map[String, Command], store: Store, client: Client, argv: List[By
     client_id: client.id,
     clients: client.clients,
     table: table,
+    sizes: sizes,
   )
 
   outcome = Dispatch.execute(table, argv[0], call)

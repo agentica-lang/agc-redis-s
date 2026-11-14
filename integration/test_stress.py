@@ -91,6 +91,21 @@ def client(server, number, failures):
 GROUP = [b"group:%d" % i for i in range(10)]
 
 
+def crc16(data):
+    """Redis's crc16 (XMODEM), for the slot of a key."""
+    crc = 0
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) if crc & 0x8000 else crc << 1
+            crc &= 0xFFFF
+    return crc
+
+
+def shard_of(key, count):
+    return (crc16(key) % 16384) * count // 16384
+
+
 def group_writer(server, number, failures):
     """MSET of every key of GROUP at once: a reader must never see two values."""
     try:
@@ -137,6 +152,7 @@ def never_reads(server):
 
 class StressTest(unittest.TestCase):
     def test_parallel_pipelined_clients(self):
+        self.assertGreater(len({shard_of(key, 4) for key in GROUP}), 1, "GROUP must span shards")
         for shards in ("1", "4"):
             with self.subTest(shards=shards):
                 self.run_clients(Server("--shards", shards))

@@ -11,7 +11,8 @@ import Routes from "../shards/route"
 import Runner from "../commands/runner"
 import Stream from "../resp/stream"
 import Writer from "../resp/writer"
-import {Answer, Loan, Message, Payback} from "message"
+import Databases from "../store/databases"
+import {Loan, Message, Payback} from "message"
 import {Client, Store} from "../commands/engine"
 import {Command} from "../commands/command"
 import {Ending} from "../resp/stream"
@@ -25,6 +26,17 @@ struct Shards
   table: Map[String, Command]
   now_ms: Fn[Int]
   clients: ATS[String, Int]
+  ## How long before a lender's `Loan.until` a request on lent keys must have
+  ## given them back; later, it changes nothing.
+  margin_ms: Int = 5000
+end
+
+## What the requests of one chunk gave: the client after them, the bytes to
+## send, and whether to close then (QUIT, or a shard that did not answer).
+struct Done
+  client: Client
+  reply: Bytes
+  close: Bool
 end
 
 ## Serves the client until it leaves.
@@ -68,6 +80,43 @@ def counter() -> ATS[String, Int]
   table
 end
 
+## Locks the shards `ids` in order, runs the request on what they lent, and
+## gives each its part back. Every lender keeps its keys until its `Loan.until`;
+## the request changes them only when all of them are given back `margin_ms`
+## before the first of those times. Else, or when a shard does not lend, no
+## shard changes, there is no reply and the connection closes.
+def borrowed(shards: Shards, ids: List[Int], keys: Optional[List[Bytes]], client: Client, argv: List[Bytes]) -> Done
+  backs: List[Channel[Payback]] = []
+  loans: List[Loan] = []
+  failed = Done(client: client, reply: "".bytes, close: true)
+  for id in ids
+    out: Channel[Loan] = Channel.new(1)
+    back: Channel[Payback] = Channel.new(1)
+    backs = backs.push(back)
+    case loaned(shards.addresses[id], keys, out, back, wait_ms(shards, loans))
+      some(loan) -> loans = loans.push(loan)
+      none -> return released(backs, failed)
+    end
+  end
+
+  return released(backs, failed) if wait_ms(shards, loans) <= 0
+
+  lent = loans.map do |loan| loan.databases end
+  count = shards.addresses.size
+  now = shards.now_ms.call()
+  joint = Cluster.run_joined(shards.table, lent, loans[0].seed, ids, count, client, argv, now)
+  return released(backs, failed) if wait_ms(shards, loans) <= 0
+
+  seed = joint.ran.store.seed
+  for at in 0...ids.size
+    # Only a shard past its `until` refuses, and the check above leaves the
+    # margin: a refusal means the machine stalled that long.
+    return failed if not backs[at].send(Payback(databases: joint.backs[at], seed: seed), 0).ok?
+  end
+
+  ran(joint.ran)
+end
+
 private
 
 READ_BYTES = 65_536
@@ -80,15 +129,7 @@ ANSWER_MS = 30_000
 # A reply that is known, or one a shard will give.
 enum Pending
   Ready(Bytes)
-  Asked(Channel[Answer])
-end
-
-# What the requests of one chunk gave: the client after them, the bytes to
-# send, and whether to close then (QUIT, or a shard that did not answer).
-struct Done
-  client: Client
-  reply: Bytes
-  close: Bool
+  Asked(Channel[Bytes])
 end
 
 # The batch of requests of a row that go to one shard, not sent yet.
@@ -120,40 +161,36 @@ end
 # every message is sent before the first answer is read, so the shards work at
 # once. A request on several shards locks them in order of shard (no two
 # connections can wait for each other); the requests sent before it to those
-# shards run first, as an inbox keeps its order.
+# shards run first, as an inbox keeps its order. A shard that does not take a
+# message ends the chunk there: only the requests before it run, and the
+# connection closes after their replies.
 def answer(shards: Shards, empty: Store, client: Client, requests: List[List[Bytes]]) -> Done
   pending: List[Pending] = []
   batch = Batch()
   who = client
   closing = false
-  now = shards.now_ms.call()
   for argv in requests
-    case Routes.route(shards.table, argv, shards.addresses.size)
+    route = Routes.route(shards.table, argv, shards.addresses.size)
+    case route
       Route.One(id) ->
         if id != batch.shard
-          pending = flushed(shards, batch, who, pending)
+          case flushed(shards, batch, who)
+            some(sent) -> pending = pending.concat(sent)
+            none -> return collected(pending, who, true)
+          end
+
           batch = Batch(shard: id)
         end
 
         batch = batch.with(requests: batch.requests.push(argv))
-      Route.Local ->
-        pending = flushed(shards, batch, who, pending)
+      _ ->
+        case flushed(shards, batch, who)
+          some(sent) -> pending = pending.concat(sent)
+          none -> return collected(pending, who, true)
+        end
+
         batch = Batch()
-        done = Runner.run(shards.table, empty, who, argv, now)
-        who = done.client
-        pending = pending.push(Pending.Ready(done.reply))
-        closing = done.close
-      Route.Many(ids, keys) ->
-        pending = flushed(shards, batch, who, pending)
-        batch = Batch()
-        done = borrowed(shards, ids, some(keys), who, argv, now)
-        who = done.client
-        pending = pending.push(Pending.Ready(done.reply))
-        closing = done.close
-      Route.Everything ->
-        pending = flushed(shards, batch, who, pending)
-        batch = Batch()
-        done = borrowed(shards, (0...shards.addresses.size).to_a, none, who, argv, now)
+        done = elsewhere(shards, empty, route, who, argv)
         who = done.client
         pending = pending.push(Pending.Ready(done.reply))
         closing = done.close
@@ -162,21 +199,44 @@ def answer(shards: Shards, empty: Store, client: Client, requests: List[List[Byt
     break if closing
   end
 
-  collected(flushed(shards, batch, who, pending), who, closing)
+  return collected(pending, who, true) if closing
+
+  case flushed(shards, batch, who)
+    some(sent) -> collected(pending.concat(sent), who, false)
+    none -> collected(pending, who, true)
+  end
 end
 
-# A shard that does not take the batch would shift every later reply: the
-# connection closes after the replies before it.
-def flushed(shards: Shards, batch: Batch, client: Client, pending: List[Pending]) -> List[Pending]
-  return pending if batch.requests.empty?
+# A request that does not run on one shard, with the clock read now: a request
+# that waited for locks must not see the time from before.
+def elsewhere(shards: Shards, empty: Store, route: Route, client: Client, argv: List[Bytes]) -> Done
+  count = shards.addresses.size
+  case route
+    Route.Local -> ran(Runner.run(shards.table, empty, client, argv, shards.now_ms.call()))
+    Route.Sizes ->
+      case sized(shards)
+        some(sizes) -> ran(Runner.run(shards.table, empty, client, argv, shards.now_ms.call(), sizes))
+        none -> Done(client: client, reply: "".bytes, close: true)
+      end
 
-  answer: Channel[Answer] = Channel.new(1)
+    Route.Many(ids, keys) -> borrowed(shards, ids, some(keys), client, argv)
+    Route.Everything -> borrowed(shards, (0...count).to_a, none, client, argv)
+    Route.One(_) -> Done(client: client, reply: "".bytes, close: true)
+  end
+end
+
+def ran(done: Runner.Ran) -> Done = Done(client: done.client, reply: done.reply, close: done.close)
+
+# The batch sent, as its pending reply (none to send: no reply); none when the
+# shard did not take it.
+def flushed(shards: Shards, batch: Batch, client: Client) -> Optional[List[Pending]]
+  return some([]) if batch.requests.empty?
+
+  answer: Channel[Bytes] = Channel.new(1)
   message = Message.Run(batch.requests, client, answer)
   case Actor.cast(shards.addresses[batch.shard], message, SEND_MS)
-    ok(_) -> pending.push(Pending.Asked(answer))
-    error(_) ->
-      answer.close
-      pending.push(Pending.Asked(answer))
+    ok(_) -> some([Pending.Asked(answer)])
+    error(_) -> none
   end
 end
 
@@ -189,7 +249,7 @@ def collected(pending: List[Pending], client: Client, closing: Bool) -> Done
       Pending.Ready(bytes) -> parts = parts.push(bytes)
       Pending.Asked(answer) ->
         case answer.recv(ANSWER_MS)
-          ok(got) -> parts = parts.push(got.reply)
+          ok(got) -> parts = parts.push(got)
           error(_) -> return Done(client: client, reply: Bytes.concat(parts), close: true)
         end
     end
@@ -198,43 +258,44 @@ def collected(pending: List[Pending], client: Client, closing: Bool) -> Done
   Done(client: client, reply: Bytes.concat(parts), close: closing)
 end
 
-# Locks the shards `ids` in order, runs the request on what they lent, and
-# gives each its part back. A shard that does not lend in time unlocks the
-# others with nothing changed, and the connection closes.
-def borrowed(
-  shards: Shards,
-  ids: List[Int],
-  keys: Optional[List[Bytes]],
-  client: Client,
-  argv: List[Bytes],
-  now: Int,
-) -> Done
-  backs: List[Channel[Payback]] = []
-  loans: List[Loan] = []
-  for id in ids
-    out: Channel[Loan] = Channel.new(1)
-    back: Channel[Payback] = Channel.new(1)
-    backs = backs.push(back)
-    case loaned(shards.addresses[id], keys, out, back)
-      some(loan) -> loans = loans.push(loan)
-      none ->
-        for held in backs
-          held.close
-        end
+# The sizes of every shard's databases, added up; none when a shard does not
+# answer.
+def sized(shards: Shards) -> Optional[List[Databases.Size]]
+  answers: List[Channel[List[Databases.Size]]] = []
+  for address in shards.addresses
+    answer: Channel[List[Databases.Size]] = Channel.new(1)
+    return none if not Actor.cast(address, Message.Sizes(answer), SEND_MS).ok?
 
-        return Done(client: client, reply: "".bytes, close: true)
+    answers = answers.push(answer)
+  end
+
+  parts: List[List[Databases.Size]] = []
+  for answer in answers
+    case answer.recv(ANSWER_MS)
+      ok(sizes) -> parts = parts.push(sizes)
+      error(_) -> return none
     end
   end
 
-  lent = loans.map do |loan| loan.databases end
-  count = shards.addresses.size
-  joint = Cluster.run_joined(shards.table, lent, loans[0].seed, ids, count, client, argv, now)
-  seed = joint.ran.store.seed
-  for at in 0...ids.size
-    _ = backs[at].send(Payback(databases: joint.backs[at], seed: seed), 0)
+  some(Databases.summed(parts))
+end
+
+# How long a request on lent keys may still take: until the first lender's
+# `until`, less the margin; `ANSWER_MS` before the first loan.
+def wait_ms(shards: Shards, loans: List[Loan]) -> Int
+  return ANSWER_MS if loans.empty?
+
+  first = loans.map { |loan| loan.until }.min.unwrap!
+  first - shards.margin_ms - Time.monotonic_ms
+end
+
+# Closing a lender's channel gives it nothing back: it keeps its data.
+def released(backs: List[Channel[Payback]], failed: Done) -> Done
+  for back in backs
+    back.close
   end
 
-  Done(client: joint.ran.client, reply: joint.ran.reply, close: joint.ran.close)
+  failed
 end
 
 # The loan of one shard; a give-up closes `out`, so a loan sent just before is
@@ -244,10 +305,13 @@ def loaned(
   keys: Optional[List[Bytes]],
   out: Channel[Loan],
   back: Channel[Payback],
+  wait: Int,
 ) -> Optional[Loan]
+  return none if wait <= 0
+
   return none if not Actor.cast(address, Message.Lend(keys, out, back), SEND_MS).ok?
 
-  case out.recv(ANSWER_MS)
+  case out.recv(wait)
     ok(loan) -> some(loan)
     error(_) ->
       out.close

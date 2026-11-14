@@ -12,8 +12,8 @@ import Keyspace from "../store/keyspace"
 
 def commands() -> List[Command]
   [
-    Command(name: "info", arity: -1, handler: &info),
-    Command(name: "dbsize", arity: 1, handler: &dbsize),
+    Command(name: "info", arity: -1, handler: &info, keys: Keys.Sizes),
+    Command(name: "dbsize", arity: 1, handler: &dbsize, keys: Keys.Sizes),
     Command(name: "time", arity: 1, handler: &time, keys: Keys.None),
     Command(name: "flushall", arity: -1, handler: &flushall),
     Command(name: "flushdb", arity: -1, handler: &flushdb),
@@ -27,7 +27,13 @@ private
 # all of them; a name only that section, and an unknown name nothing.
 SECTIONS = ["server", "clients", "memory", "keyspace"]
 
-def dbsize(call: Call) -> Outcome = reply(call, Reply.Integer(Keyspace.size(call.keyspace)))
+def dbsize(call: Call) -> Outcome = reply(call, Reply.Integer(sizes_of(call)[call.session.db].keys))
+
+def sizes_of(call: Call) -> List[Databases.Size]
+  return Databases.sizes(call.databases) if call.sizes.empty?
+
+  call.sizes
+end
 
 # The clock has milliseconds, so the microseconds end in three zeros.
 def time(call: Call) -> Outcome
@@ -75,7 +81,7 @@ def section(call: Call, name: String) -> String
     "server" -> ["# Server", "redis_version:#{Connection.REDIS_VERSION}", "redis_mode:standalone"]
     "clients" -> ["# Clients", "connected_clients:#{call.clients}"]
     "memory" -> ["# Memory", "maxmemory:0", "maxmemory_policy:noeviction"]
-    _ -> keyspace_lines(call.databases)
+    _ -> keyspace_lines(sizes_of(call))
   end
 
   "#{lines.join("\r\n")}\r\n"
@@ -84,13 +90,12 @@ end
 # Only a database with keys is listed. `expires` counts the keys with a
 # deadline, swept or not, as Redis does. avg_ttl is 0: Redis only estimates it
 # from its sampling.
-def keyspace_lines(databases: Databases.Databases) -> List[String]
+def keyspace_lines(sizes: List[Databases.Size]) -> List[String]
   lines = ["# Keyspace"]
-  for index in 0...Databases.COUNT
-    space = Databases.space_at(databases, index)
-    keys = Keyspace.size(space)
-    if keys > 0
-      lines = lines.push("db#{index}:keys=#{keys},expires=#{Keyspace.expiring(space)},avg_ttl=0")
+  for index in 0...sizes.size
+    size = sizes[index]
+    if size.keys > 0
+      lines = lines.push("db#{index}:keys=#{size.keys},expires=#{size.expiring},avg_ttl=0")
     end
   end
 

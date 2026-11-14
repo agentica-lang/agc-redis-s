@@ -134,9 +134,12 @@ handler task per connection. It reads a chunk, routes each request
 message with a reply channel, all before it reads the first answer, so the
 shards work at once. A request without keys (PING, SELECT, CLIENT) runs at the
 connection, which keeps the session. A request on the keys of several shards
-(MSET, RENAME, ...) or on all of them (DBSIZE, SCAN, FLUSHALL) locks them in
-the order of shard, so two connections never wait for each other: each lends
-its keys, the request runs on their join, and each takes its part back. The
+(MSET, RENAME, ...) or on all of them (SCAN, FLUSHALL) locks them in the
+order of shard, so two connections never wait for each other: each lends its
+keys, the request runs on their join, and each takes its part back. The keys
+come back before the first lender stops waiting (`Loan.until`, less a margin),
+or the request changes nothing and the connection closes with no reply. DBSIZE
+and INFO only add up the sizes each shard reports (`Call.sizes`). The
 connection sends the replies in the order of the requests with `Dock.send`,
 which never waits: a client that does not read is dropped at the cap
 (`max_outbox_bytes`, 8 MiB). An `Effect` (today only `Close`, used by `QUIT`)

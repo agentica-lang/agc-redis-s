@@ -10,7 +10,7 @@
 
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
-import {Databases} from "../store/databases"
+import {Databases, Size} from "../store/databases"
 import {Keyspace} from "../store/keyspace"
 
 ## What the server does after it sent the replies.
@@ -36,7 +36,9 @@ enum Keys
   Range(Int, Int, Int)
   ## The argument at this position counts the keys that follow it (SINTERCARD).
   Counted(Int)
-  ## Every key of every database (DBSIZE, FLUSHALL, SCAN).
+  ## Only the size of each database (DBSIZE, INFO): `Call.sizes`.
+  Sizes
+  ## Every key of every database (FLUSHALL, SCAN).
   Whole
 end
 
@@ -60,6 +62,9 @@ struct Call
   clients: Int = 0
   ## The command table, for `COMMAND`.
   table: Map[String, Command] = {}
+  ## The size of each database when the keys are split across shards (the
+  ## request runs on no data then); empty otherwise: count `databases`.
+  sizes: List[Size] = []
 end
 
 ## A handler's answer: the change to the data, zero or more replies in order,

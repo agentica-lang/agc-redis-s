@@ -14,6 +14,8 @@ enum Route
   One(Int)
   ## On these keys of these shards (ascending), lent together.
   Many(List[Int], List[Bytes])
+  ## On the sizes of every shard's databases, added up, at the connection.
+  Sizes
   ## On every key of every shard.
   Everything
 end
@@ -30,6 +32,7 @@ end
 def keys_of(keys: Keys, argv: List[Bytes]) -> List[Bytes]
   case keys
     Keys.None -> []
+    Keys.Sizes -> []
     Keys.Whole -> []
     Keys.Range(first, last, step) -> spaced(argv, first, last, step)
     Keys.Counted(at) -> counted(argv, at)
@@ -41,9 +44,16 @@ private
 def by_keys(keys: Keys, argv: List[Bytes], count: Int) -> Route
   case keys
     Keys.None -> Route.Local
+    Keys.Sizes -> sized(count)
     Keys.Whole -> whole(count)
     _ -> by_shards(keys_of(keys, argv), count)
   end
+end
+
+def sized(count: Int) -> Route
+  return Route.One(0) if count == 1
+
+  Route.Sizes
 end
 
 def whole(count: Int) -> Route
