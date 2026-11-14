@@ -47,10 +47,33 @@ def test_a_loan_that_comes_too_late_changes_no_shard() -> Result[Void]
   stopped(rig)
 end
 
-def started() -> Rig
+# A shard with an inbox of 1 is busy lending and its inbox is full: the SET
+# for it is refused after the send timeout, so only the PING before it answers,
+# the PING after it does not run, and the connection closes.
+def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
+  # The lend outlasts the send timeout (1 s), so the inbox stays full.
+  rig = started_with(1, 1, 5000)
+  shards = rig.shards
+  out: Channel[Loan] = Channel.new(1)
+  back: Channel[Payback] = Channel.new(1)
+  try shards.addresses[0].send(Message.Lend(none, out, back), 1000)
+  _ = try out.recv(1000)
+  try shards.addresses[0].send(Message.Tick, 1000)
+  requests = [["PING".bytes], ["SET".bytes, "a".bytes, "1".bytes], ["PING".bytes]]
+  done = Connection.answer(shards, Engine.start(fresh()), Engine.client(1), requests)
+  back.close
+  try Test.eq(done.close, true)
+  try Test.eq(done.reply.to_a, "+PONG\r\n".bytes.to_a)
+  try Test.eq(try get(shards, 0, "a".bytes), "$-1\r\n")
+  stopped(rig)
+end
+
+def started() -> Rig = started_with(2, 16, LEND_MS)
+
+def started_with(count: Int, capacity: Int, lend_ms: Int) -> Rig
   table = Table.build()
-  setup = Shard.Setup(store: Engine.start(fresh()), table: table, now_ms: &zero, lend_ms: LEND_MS)
-  refs = [Shard.start(setup, 16), Shard.start(setup, 16)]
+  setup = Shard.Setup(store: Engine.start(fresh()), table: table, now_ms: &zero, lend_ms: lend_ms)
+  refs = (0...count).to_a.map do |_| Shard.start(setup, capacity) end
   shards = Connection.Shards(
     addresses: refs.map do |ref| ref.address end,
     table: table,
