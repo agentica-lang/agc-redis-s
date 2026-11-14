@@ -3,17 +3,17 @@
 ## WRONGTYPE (checkType) before it looks at the elements; the X forms answer 0
 ## for a missing key and create nothing.
 
-import {Call, Command, Outcome, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, one_key, reply, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
 def commands() -> List[Command]
   [
-    Command(name: "lpush", arity: -3, handler: &lpush),
-    Command(name: "rpush", arity: -3, handler: &rpush),
-    Command(name: "lpushx", arity: -3, handler: &lpushx),
-    Command(name: "rpushx", arity: -3, handler: &rpushx),
+    Command(name: "lpush", arity: -3, handler: &lpush, keys: one_key()),
+    Command(name: "rpush", arity: -3, handler: &rpush, keys: one_key()),
+    Command(name: "lpushx", arity: -3, handler: &lpushx, keys: one_key()),
+    Command(name: "rpushx", arity: -3, handler: &rpushx, keys: one_key()),
   ]
 end
 

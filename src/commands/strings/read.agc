@@ -3,16 +3,16 @@
 import Access from "access"
 import Errors from "../errors"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
+import {Call, Command, Outcome, all_keys, fail, one_key, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Strings from "../../store/strings"
 
 def commands() -> List[Command]
   [
-    Command(name: "get", arity: 2, handler: &get),
-    Command(name: "mget", arity: -2, handler: &mget),
-    Command(name: "strlen", arity: 2, handler: &strlen),
-    Command(name: "getrange", arity: 4, handler: &getrange),
+    Command(name: "get", arity: 2, handler: &get, keys: one_key()),
+    Command(name: "mget", arity: -2, handler: &mget, keys: all_keys()),
+    Command(name: "strlen", arity: 2, handler: &strlen, keys: one_key()),
+    Command(name: "getrange", arity: 4, handler: &getrange, keys: one_key()),
   ]
 end
 

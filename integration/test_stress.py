@@ -1,6 +1,10 @@
 """Many clients at once, each pipelining: every reply comes back whole, in the
-order of its client's requests, and no write is lost between clients."""
+order of its client's requests, no write is lost between clients, a write to
+keys of several shards is never seen half done, and clients that reset or
+never read do not stop the others."""
 
+import socket
+import struct
 import threading
 import unittest
 
@@ -83,12 +87,71 @@ def client(server, number, failures):
         failures.append((number, repr(failure)))
 
 
+# Keys that the hash slots spread over the shards, written together.
+GROUP = [b"group:%d" % i for i in range(10)]
+
+
+def group_writer(server, number, failures):
+    """MSET of every key of GROUP at once: a reader must never see two values."""
+    try:
+        with server.connect() as sock:
+            sock.settimeout(READ_SECONDS)
+            replies = Replies(sock)
+            for round_ in range(ROUNDS * 5):
+                value = b"%d-%d" % (number, round_)
+                words = [b"MSET"]
+                for key in GROUP:
+                    words += [key, value]
+                # DBSIZE locks every shard; now and then, as it joins all keys.
+                count = round_ % 10 == 0
+                sock.sendall(command(*words) + command(b"MGET", *GROUP) + (command(b"DBSIZE") if count else b""))
+                assert replies.line() == b"+OK"
+                assert replies.line() == b"*%d" % len(GROUP)
+                seen = {replies.bulk() for _ in GROUP}
+                assert len(seen) == 1, "torn MSET: %r" % seen
+                if count:
+                    assert replies.line().startswith(b":")
+    except Exception as failure:  # noqa: BLE001 - reported by the test
+        failures.append(("group", number, repr(failure)))
+
+
+def reset_after_pipeline(server):
+    """A big INCR pipeline, then a close with RST while the replies are due."""
+    sock = server.connect()
+    sock.sendall(command(b"INCR", b"reset") * 20000)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()
+
+
+def never_reads(server):
+    """Big GET replies to a client that never reads: dock drops it at the cap."""
+    sock = server.connect()
+    sock.sendall(command(b"SET", b"big", b"x" * 1_000_000))
+    try:
+        for _ in range(40):
+            sock.sendall(command(b"GET", b"big") * 4)
+    except OSError:
+        pass
+    return sock
+
+
 class StressTest(unittest.TestCase):
     def test_parallel_pipelined_clients(self):
-        server = Server()
+        for shards in ("1", "4"):
+            with self.subTest(shards=shards):
+                self.run_clients(Server("--shards", shards))
+
+    def run_clients(self, server):
         try:
+            reset_after_pipeline(server)
+            silent = never_reads(server)
+            with server.connect() as sock:
+                sock.sendall(command(b"PING"))
+                self.assertEqual(Replies(sock).line(), b"+PONG")
+            silent.close()
             failures = []
             threads = [threading.Thread(target=client, args=(server, n, failures)) for n in range(CLIENTS)]
+            threads += [threading.Thread(target=group_writer, args=(server, n, failures)) for n in range(5)]
             for thread in threads:
                 thread.start()
             for thread in threads:
@@ -96,9 +159,11 @@ class StressTest(unittest.TestCase):
             self.assertEqual(failures, [])
             with server.connect() as sock:
                 replies = Replies(sock)
-                sock.sendall(command(b"GET", b"shared") + command(b"DBSIZE"))
+                # The reset may come before the server read any INCR.
+                sock.sendall(command(b"GET", b"shared") + command(b"DEL", b"big", b"reset") + command(b"DBSIZE"))
                 self.assertEqual(replies.bulk(), b"%d" % (CLIENTS * ROUNDS * BATCH))
-                self.assertEqual(replies.line(), b":%d" % (CLIENTS * ROUNDS * BATCH + CLIENTS + 1))
+                self.assertIn(replies.line(), (b":1", b":2"))
+                self.assertEqual(replies.line(), b":%d" % (CLIENTS * ROUNDS * BATCH + CLIENTS + 1 + len(GROUP)))
         finally:
             server.stop()
 

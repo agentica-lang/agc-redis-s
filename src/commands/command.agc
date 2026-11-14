@@ -27,6 +27,19 @@ enum Change
   All(Databases)
 end
 
+## Where the keys of a request are, as Redis's first key, last key and step
+## (positions count the name as 0), so a request can go to the shard of its keys.
+enum Keys
+  ## No key: the request runs at the connection, on no data.
+  None
+  ## From `first` to `last` (-1: the last argument), every `step`.
+  Range(Int, Int, Int)
+  ## The argument at this position counts the keys that follow it (SINTERCARD).
+  Counted(Int)
+  ## Every key of every database (DBSIZE, FLUSHALL, SCAN).
+  Whole
+end
+
 ## Everything a handler may read. New inputs are new fields with a default,
 ## except a struct, which cannot be a default (`session`).
 ## `name` is the lowercase name of the command; `execute` sets it.
@@ -68,7 +81,18 @@ struct Command
   ## A container (`CLIENT`) has no handler of its own: its first argument picks
   ## the row `client|id`. Redis calls these subcommands.
   container: Bool = false
+  ## A row that does not say reads every key, which is always right but slow.
+  keys: Keys = Keys.Whole
 end
+
+## The key of a command on one key.
+def one_key() -> Keys = Keys.Range(1, 1, 1)
+
+## The two keys of a command on a source and a destination.
+def two_keys() -> Keys = Keys.Range(1, 2, 1)
+
+## Every argument is a key.
+def all_keys() -> Keys = Keys.Range(1, -1, 1)
 
 def reply(call: Call, answer: Reply) -> Outcome = Outcome(session: call.session, replies: [answer])
 
@@ -105,7 +129,9 @@ def wrong_arity(call: Call) -> Outcome = fail(call, "ERR wrong number of argumen
 ## a subcommand. `dispatch` never calls its handler. A container that also
 ## works alone (`COMMAND`) is a `Command` with `container: true` and its own
 ## handler, which runs when no subcommand is given.
-def container(name: String) -> Command = Command(name: name, arity: -2, handler: &wrong_arity, container: true)
+def container(name: String) -> Command
+  Command(name: name, arity: -2, handler: &wrong_arity, container: true, keys: Keys.None)
+end
 
 ## What a command answers when the key holds another type (Redis's `checkType`).
 def wrong_type(call: Call) -> Outcome = fail(call, "WRONGTYPE Operation against a key holding the wrong kind of value")

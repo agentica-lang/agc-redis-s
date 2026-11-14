@@ -5,18 +5,18 @@
 import Args from "args"
 import Errors from "errors"
 import Integer from "../resp/integer"
-import {Call, Command, Outcome, container, fail, fail_bytes, reply, reply_with_session} from "command"
+import {Call, Command, Keys, Outcome, container, fail, fail_bytes, reply, reply_with_session} from "command"
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
 
 def commands() -> List[Command]
   [
     container("client"),
-    Command(name: "client|id", arity: 2, handler: &id),
-    Command(name: "client|setname", arity: 3, handler: &setname),
-    Command(name: "client|getname", arity: 2, handler: &getname),
-    Command(name: "client|setinfo", arity: 4, handler: &setinfo),
-    Command(name: "client|list", arity: -2, handler: &list),
+    Command(name: "client|id", arity: 2, handler: &id, keys: Keys.None),
+    Command(name: "client|setname", arity: 3, handler: &setname, keys: Keys.None),
+    Command(name: "client|getname", arity: 2, handler: &getname, keys: Keys.None),
+    Command(name: "client|setinfo", arity: 4, handler: &setinfo, keys: Keys.None),
+    Command(name: "client|list", arity: -2, handler: &list, keys: Keys.None),
   ]
 end
 

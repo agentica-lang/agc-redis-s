@@ -14,14 +14,14 @@ START_SECONDS = 30
 class Server:
     """One server process on port 0; it prints the real port on a `ready` line."""
 
-    def __init__(self):
+    def __init__(self, *args):
         if shutil.which(AGENTICA) is None:
             # CI must not skip: a missing binary there is a broken setup.
             if os.environ.get("CI"):
                 raise RuntimeError("%s is not installed" % AGENTICA)
             raise unittest.SkipTest("%s is not installed" % AGENTICA)
         self.proc = subprocess.Popen(
-            [AGENTICA, os.path.join(ROOT, "agc_redis_s.agc"), "--port", "0"],
+            [AGENTICA, os.path.join(ROOT, "agc_redis_s.agc"), "--port", "0", *args],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=ROOT,

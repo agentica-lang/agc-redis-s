@@ -8,16 +8,16 @@
 import Args from "../args"
 import Errors from "../errors"
 import Replies from "replies"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Keys, Outcome, fail, reply, two_keys, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
 def commands() -> List[Command]
   [
-    Command(name: "lmove", arity: 5, handler: &lmove),
-    Command(name: "rpoplpush", arity: 3, handler: &rpoplpush),
-    Command(name: "lmpop", arity: -4, handler: &lmpop),
+    Command(name: "lmove", arity: 5, handler: &lmove, keys: two_keys()),
+    Command(name: "rpoplpush", arity: 3, handler: &rpoplpush, keys: two_keys()),
+    Command(name: "lmpop", arity: -4, handler: &lmpop, keys: Keys.Counted(1)),
   ]
 end
 

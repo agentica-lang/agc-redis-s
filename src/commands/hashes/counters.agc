@@ -5,7 +5,7 @@
 
 import Errors from "../errors"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import LongDouble from "../../store/long_double"
 import Hashes from "../../store/hashes"
@@ -13,8 +13,8 @@ import {Held} from "../../store/hashes"
 
 def commands() -> List[Command]
   [
-    Command(name: "hincrby", arity: 4, handler: &hincrby),
-    Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat),
+    Command(name: "hincrby", arity: 4, handler: &hincrby, keys: one_key()),
+    Command(name: "hincrbyfloat", arity: 4, handler: &hincrbyfloat, keys: one_key()),
   ]
 end
 

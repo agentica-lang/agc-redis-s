@@ -5,14 +5,17 @@
 
 import Args from "../args"
 import Replies from "replies"
-import {Call, Command, Outcome, fail, reply, wrong_arity, wrong_type, write} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, write, wrong_arity, wrong_type} from "../command"
 import Keyspace from "../../store/keyspace"
 import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
 def commands() -> List[Command]
-  [Command(name: "lpop", arity: -2, handler: &lpop), Command(name: "rpop", arity: -2, handler: &rpop)]
+  [
+    Command(name: "lpop", arity: -2, handler: &lpop, keys: one_key()),
+    Command(name: "rpop", arity: -2, handler: &rpop, keys: one_key()),
+  ]
 end
 
 private

@@ -5,12 +5,12 @@ import Args from "../args"
 import Errors from "../errors"
 import Generator from "../../store/generator"
 import Integer from "../../resp/integer"
-import {Call, Command, Outcome, fail, reply, wrong_type} from "../command"
+import {Call, Command, Outcome, fail, one_key, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-def commands() -> List[Command] = [Command(name: "hrandfield", arity: -2, handler: &hrandfield)]
+def commands() -> List[Command] = [Command(name: "hrandfield", arity: -2, handler: &hrandfield, keys: one_key())]
 
 private
 

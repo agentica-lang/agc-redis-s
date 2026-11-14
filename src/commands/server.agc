@@ -4,7 +4,7 @@
 
 import Args from "args"
 import Errors from "errors"
-import {Call, Command, Outcome, fail, reply, write, write_all} from "command"
+import {Call, Command, Keys, Outcome, fail, reply, write, write_all} from "command"
 import Connection from "connection"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
@@ -14,7 +14,7 @@ def commands() -> List[Command]
   [
     Command(name: "info", arity: -1, handler: &info),
     Command(name: "dbsize", arity: 1, handler: &dbsize),
-    Command(name: "time", arity: 1, handler: &time),
+    Command(name: "time", arity: 1, handler: &time, keys: Keys.None),
     Command(name: "flushall", arity: -1, handler: &flushall),
     Command(name: "flushdb", arity: -1, handler: &flushdb),
   ]

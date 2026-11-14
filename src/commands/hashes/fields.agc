@@ -3,22 +3,22 @@
 ## (checkType). A command that reads or writes answers WRONGTYPE for a key of
 ## another type, before it looks at the fields; a missing key is an empty hash.
 
-import {Call, Command, Outcome, reply, wrong_arity, wrong_type, write} from "../command"
+import {Call, Command, Outcome, one_key, reply, write, wrong_arity, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
 def commands() -> List[Command]
   [
-    Command(name: "hset", arity: -4, handler: &hset),
-    Command(name: "hmset", arity: -4, handler: &hmset),
-    Command(name: "hsetnx", arity: 4, handler: &hsetnx),
-    Command(name: "hget", arity: 3, handler: &hget),
-    Command(name: "hmget", arity: -3, handler: &hmget),
-    Command(name: "hdel", arity: -3, handler: &hdel),
-    Command(name: "hlen", arity: 2, handler: &hlen),
-    Command(name: "hexists", arity: 3, handler: &hexists),
-    Command(name: "hstrlen", arity: 3, handler: &hstrlen),
+    Command(name: "hset", arity: -4, handler: &hset, keys: one_key()),
+    Command(name: "hmset", arity: -4, handler: &hmset, keys: one_key()),
+    Command(name: "hsetnx", arity: 4, handler: &hsetnx, keys: one_key()),
+    Command(name: "hget", arity: 3, handler: &hget, keys: one_key()),
+    Command(name: "hmget", arity: -3, handler: &hmget, keys: one_key()),
+    Command(name: "hdel", arity: -3, handler: &hdel, keys: one_key()),
+    Command(name: "hlen", arity: 2, handler: &hlen, keys: one_key()),
+    Command(name: "hexists", arity: 3, handler: &hexists, keys: one_key()),
+    Command(name: "hstrlen", arity: 3, handler: &hstrlen, keys: one_key()),
   ]
 end
 

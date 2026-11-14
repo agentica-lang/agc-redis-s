@@ -7,20 +7,20 @@
 
 import Args from "../args"
 import Errors from "../errors"
-import {Call, Command, Outcome, fail, reply, wrong_type, write} from "../command"
+import {Call, Command, Keys, Outcome, all_keys, fail, reply, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Members} from "../../store/sets"
 
 def commands() -> List[Command]
   [
-    Command(name: "sunion", arity: -2, handler: &sunion),
-    Command(name: "sinter", arity: -2, handler: &sinter),
-    Command(name: "sdiff", arity: -2, handler: &sdiff),
-    Command(name: "sunionstore", arity: -3, handler: &sunionstore),
-    Command(name: "sinterstore", arity: -3, handler: &sinterstore),
-    Command(name: "sdiffstore", arity: -3, handler: &sdiffstore),
-    Command(name: "sintercard", arity: -3, handler: &sintercard),
+    Command(name: "sunion", arity: -2, handler: &sunion, keys: all_keys()),
+    Command(name: "sinter", arity: -2, handler: &sinter, keys: all_keys()),
+    Command(name: "sdiff", arity: -2, handler: &sdiff, keys: all_keys()),
+    Command(name: "sunionstore", arity: -3, handler: &sunionstore, keys: all_keys()),
+    Command(name: "sinterstore", arity: -3, handler: &sinterstore, keys: all_keys()),
+    Command(name: "sdiffstore", arity: -3, handler: &sdiffstore, keys: all_keys()),
+    Command(name: "sintercard", arity: -3, handler: &sintercard, keys: Keys.Counted(1)),
   ]
 end
 

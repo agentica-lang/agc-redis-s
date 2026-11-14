@@ -4,12 +4,12 @@
 ## The source left empty goes with its key; both keys that stay keep their
 ## deadlines and a new destination has none.
 
-import {Call, Command, Outcome, reply, wrong_type, write} from "../command"
+import {Call, Command, Outcome, reply, two_keys, write, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-def commands() -> List[Command] = [Command(name: "smove", arity: 4, handler: &smove)]
+def commands() -> List[Command] = [Command(name: "smove", arity: 4, handler: &smove, keys: two_keys())]
 
 private
 

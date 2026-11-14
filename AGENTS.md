@@ -7,7 +7,7 @@ is in the GitHub issues, one milestone per release.
 ## Map
 
 ```text
-agc_redis_s.agc      main: options, start the store actor, start dock
+agc_redis_s.agc      main: options, start the shard actors, start dock
 src/
   resp/              PURE. The RESP2 wire format: reply.agc (the reply
                      types), writer.agc (reply to bytes), reader.agc (bytes
@@ -19,11 +19,17 @@ src/
   commands/          PURE. command.agc (Command, Call, Outcome and the
                      helpers that build an Outcome), table.agc (all rows),
                      dispatch.agc (name, arity, call the handler), one file
-                     per command family
+                     per command family; a row's `keys` says where its
+                     keys are
+  shards/            PURE. slot.agc (CRC16 hash slots, slot to shard),
+                     route.agc (where a request runs), lend.agc (lend keys,
+                     join and split data), cluster.agc (the steps of a
+                     request on split data, and shards in one value)
   server/            I/O SHELL: tasks, the clock; the sockets are the
                      package `dock`. config, connection (the handler dock
-                     runs per client), store_actor (owns the data), message,
-                     clock
+                     runs per client: routes the requests, keeps the
+                     session), shard (an actor that owns some slots),
+                     message, clock
 test/functional/     one `<domain>_test.agc` per domain
 test/                unit tests of pure logic, the same path as the source;
                      support.agc: `exchange` (request bytes -> reader ->
@@ -66,9 +72,10 @@ tools/               check_purity.py and its tests (Python, standard library)
   - Functional tests by domain, in Agentica, in process, no socket:
     `test/functional/<domain>_test.agc` feeds request bytes to `exchange` and
     compares the reply bytes and the keyspace. Plain paths, error texts and
-    arity are tested here. The helper calls `commands/runner.agc`, the same
-    code as the store actor; only its read loop mirrors the server's, and the
-    smoke test is the check of the real loop.
+    arity are tested here. The helper runs each request through
+    `shards/cluster.agc` on 3 shards, the routes and steps of the server; only
+    its read loop and the actors are the server's, and the integration tests
+    check those.
   - Unit tests only where a pure function has real logic (RESP reader and
     writer, glob, ranges, score formatting).
   - Property tests with `prop` (agentica-lang/packages, pinned in
@@ -87,8 +94,10 @@ tools/               check_purity.py and its tests (Python, standard library)
   - TCP is tested in the Agentica repo. Here one smoke test (`integration/`)
     proves the binary starts, answers PING, QUIT closes, and SIGTERM frees the
     port; it also checks that nothing runs behind a QUIT and that a client
-    that left is not counted. One stress test runs many pipelining clients at
-    once and checks that each gets its replies in order and no write is lost.
+    that left is not counted. One stress test, with 1 and 4 shards, runs many
+    pipelining clients at once and checks that each gets its replies in order,
+    no write is lost, an MSET across shards is never seen half done, and a
+    client that resets or never reads does not stop the others.
     The sockets, the accept loop and the outboxes are the package `dock`,
     tested there.
 - One concern per file. A family past 300 lines becomes a folder
@@ -110,20 +119,28 @@ tools/               check_purity.py and its tests (Python, standard library)
 ## How a command travels
 
 ```text
-request (name, args) -> store actor (owns the keyspace; one message at a time,
-like Redis) -> commands/dispatch (table lookup, arity check) -> handler
--> Outcome (new keyspace, replies, effects) -> RESP writer -> the client
+request (name, args) -> connection (route by the keys) -> shard actor (owns
+the keys of its slots; one message at a time, like Redis) -> commands/dispatch
+(table lookup, arity check) -> handler -> Outcome (new keyspace, replies,
+effects) -> RESP writer -> back to the connection -> the client
 ```
 
-One actor (`std/actor`) owns the data and handles its messages one at a time,
-so no command needs a lock; a ticker task wakes it for the active expiry when
-no request comes. `dock` runs one handler task per connection, which reads and sends the
-requests to the store actor. The store actor answers with `Dock.send` and the
-`Conn` the message carries: dock queues the bytes in the outbox of the client
-and never waits, so replies and later pushes (pub/sub) go out in the order the
-store actor decided, and a client that does not read is dropped at the cap
-(`max_outbox_bytes`, 8 MiB). An `Effect` (today only `Close`,
-used by `QUIT`) is what the server does after the replies.
+`--shards N` (default 1) actors (`std/actor`) split the keys by hash slot, as
+Redis Cluster does (CRC16 with the `{tag}` rule). Each owns its keys and
+handles its messages one at a time, so no command needs a lock; a ticker task
+wakes each for the active expiry when no request comes. `dock` runs one
+handler task per connection. It reads a chunk, routes each request
+(`shards/route.agc`) and sends each row of requests for one shard as one
+message with a reply channel, all before it reads the first answer, so the
+shards work at once. A request without keys (PING, SELECT, CLIENT) runs at the
+connection, which keeps the session. A request on the keys of several shards
+(MSET, RENAME, ...) or on all of them (DBSIZE, SCAN, FLUSHALL) locks them in
+the order of shard, so two connections never wait for each other: each lends
+its keys, the request runs on their join, and each takes its part back. The
+connection sends the replies in the order of the requests with `Dock.send`,
+which never waits: a client that does not read is dropped at the cap
+(`max_outbox_bytes`, 8 MiB). An `Effect` (today only `Close`, used by `QUIT`)
+is what the server does after the replies.
 
 ## How to add a command
 
@@ -131,7 +148,9 @@ used by `QUIT`) is what the server does after the replies.
    file of its folder (`strings/set.agc`, `hashes/fields.agc`, ...). A new
    family is a new file with `commands()` and one line in `commands/table.agc`.
 2. Add one `Command` row (lowercase name, arity as Redis counts it with the
-   name, handler) and one handler `def name(call: Call) -> Outcome`. Answer
+   name, handler, `keys`: where its keys are, as Redis's first key, last key
+   and step; a row without `keys` locks every shard) and one handler
+   `def name(call: Call) -> Outcome`. Answer
    with the helpers of `command.agc`; the keyspace of the reply is the one
    you pass in the `Call`, or build the new one first.
 3. A new data type: a variant in `store/value.agc` and its operations in
@@ -153,8 +172,9 @@ the field or the folder when it needs it.
   `server/` only, so tests do not sleep.
 - Session (transactions, subscribed mode): `session/session.agc` holds the
   pure `Session` struct (selected database, client name, library info). It is
-  an input (`Call.session`) and an output (`Outcome.session`), and the store
-  task keeps one per client: `MULTI` queues in it, and `EXEC` reads it.
+  an input (`Call.session`) and an output (`Outcome.session`), and the
+  connection keeps it: `MULTI` queues in it, and `EXEC` runs the queue on the
+  shards of its keys, lent together.
 - Touched keys: `WATCH` and the blocking commands need the keys a command
   changed. The keyspace tracks dirty keys, or `Outcome.touched` lists them.
 - Databases: `store/databases.agc` holds the 16 keyspaces. A handler sees the
@@ -163,11 +183,11 @@ the field or the folder when it needs it.
   returns all 16 (`FLUSHALL`; `MOVE`, `SWAPDB` and `COPY ... DB` later).
 - Blocking commands (`BLPOP`, ...): a "blocking allowed" input in `Call`,
   because `MULTI` runs them without blocking. A handler that cannot answer
-  returns a park effect (keys, deadline); the store actor keeps the parked
+  returns a park effect (keys, deadline); the shard of the keys keeps the parked
   clients in order, retries them after each write, and a timer wakes the
   expired ones.
 - Pub/sub: a pure registry (channel to client ids) in `pubsub/`. A handler
-  returns a publish effect; the store actor pushes to the outboxes and drops a
-  subscriber whose outbox is full.
+  returns a publish effect; an actor of its own pushes to the outboxes and
+  drops a subscriber whose outbox is full.
 - Server-wide state for `INFO` and `CLIENT`: a pure struct built by `server/`
   and passed in `Call`.

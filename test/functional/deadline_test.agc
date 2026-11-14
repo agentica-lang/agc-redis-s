@@ -691,14 +691,13 @@ end
 # The server run with the sweep operations in place: an answer depends on one
 # only through DBSIZE and INFO, which count the keys not swept yet.
 def run_with_sweeps(table: Map[String, Command], ops: List[List[Int]], times: List[Int]) -> Bytes
-  started = Engine.start(fresh())
-  store = Engine.join(started, 1)
+  store = Engine.start(fresh())
   replies: List[Bytes] = []
   for i in 0...ops.size
     if ops[i].concat([0])[0] % 28 == 9
       store = Engine.expire_keys(store, times[i])
     else
-      done = Runner.run(table, store, 1, argv_of(ops[i]), times[i])
+      done = Runner.run(table, store, Engine.client(1), argv_of(ops[i]), times[i])
       store = done.store
       replies = replies.push(done.reply)
     end

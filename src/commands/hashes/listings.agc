@@ -1,16 +1,16 @@
 ## HGETALL, HKEYS and HVALS (t_hash.c genericHgetallCommand). RESP2 answers a
 ## map as a flat array. Each call reads the whole hash: O(n).
 
-import {Call, Command, Outcome, reply, wrong_type} from "../command"
+import {Call, Command, Outcome, one_key, reply, wrong_type} from "../command"
 import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
 def commands() -> List[Command]
   [
-    Command(name: "hgetall", arity: 2, handler: &hgetall),
-    Command(name: "hkeys", arity: 2, handler: &hkeys),
-    Command(name: "hvals", arity: 2, handler: &hvals),
+    Command(name: "hgetall", arity: 2, handler: &hgetall, keys: one_key()),
+    Command(name: "hkeys", arity: 2, handler: &hkeys, keys: one_key()),
+    Command(name: "hvals", arity: 2, handler: &hvals, keys: one_key()),
   ]
 end
 

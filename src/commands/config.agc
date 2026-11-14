@@ -5,7 +5,7 @@
 
 import Args from "args"
 import Errors from "errors"
-import {Call, Command, Outcome, container, fail, fail_bytes, reply} from "command"
+import {Call, Command, Keys, Outcome, container, fail, fail_bytes, reply} from "command"
 import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
 import Glob from "../store/glob"
@@ -14,8 +14,8 @@ import Strings from "../store/strings"
 def commands() -> List[Command]
   [
     container("config"),
-    Command(name: "config|get", arity: -3, handler: &get),
-    Command(name: "config|set", arity: -4, handler: &change),
+    Command(name: "config|get", arity: -3, handler: &get, keys: Keys.None),
+    Command(name: "config|set", arity: -4, handler: &change, keys: Keys.None),
   ]
 end
 
