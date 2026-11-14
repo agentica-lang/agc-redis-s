@@ -247,9 +247,11 @@ def flushed(shards: Shards, batch: Batch, client: Client) -> Optional[List[Pendi
   some([Pending.Asked(answer)])
 end
 
-# Waits for room as long as the shard runs; false once it has ended.
+# Waits for room while the shard runs, at most ANSWER_MS; false once it has
+# ended or the time is up.
 def delivered(address: Address[Message], message: Message) -> Bool
-  while true
+  until = Time.monotonic_ms + ANSWER_MS
+  while Time.monotonic_ms < until
     case Actor.cast(address, message, ROOM_MS)
       ok(_) -> return true
       error(e) -> return false if not e.is_a?("channel.timeout")

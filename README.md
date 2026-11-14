@@ -24,7 +24,7 @@ agentica agc_redis_s.agc --shards 4    # actors that split the keys by hash slot
 ```
 
 SIGTERM or SIGINT stops it as Redis does: no new clients, the queued replies
-go out, and it exits 0.
+go out, and it exits 0 (1 if a shard failed). A second signal exits at once.
 
 With more than one shard:
 

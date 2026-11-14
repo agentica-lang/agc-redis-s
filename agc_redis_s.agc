@@ -62,7 +62,8 @@ end
 def ended(refs: List[Actor.Ref[Shard.State, Message]], stopping: Optional[ATS[String, Int]]) -> Void
   return fail("a shard stopped") if not Shutdown.asked?(stopping)
 
-  Shutdown.finish(refs)
+  return fail("a shard did not stop") if not Shutdown.finish(refs)
+
   System.exit(0)
 end
 

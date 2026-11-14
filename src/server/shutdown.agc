@@ -14,7 +14,8 @@ struct Watch
   stopping: ATS[String, Int]
 end
 
-## Subscribes to SIGTERM and SIGINT and stops `server` on the first one; none
+## Subscribes to SIGTERM and SIGINT and stops `server` on the first one (a
+## second one exits at once, as Redis does); none
 ## where signals cannot be subscribed to (Windows: they stop the program).
 def watch(server: Dock.Server) -> Optional[ATS[String, Int]]
   case System.subscribe([System.Signal.Term, System.Signal.Int])
@@ -34,13 +35,23 @@ def asked?(stopping: Optional[ATS[String, Int]]) -> Bool
   end
 end
 
-## Lets each shard handle what is in its inbox, then ends it.
-def finish[S](refs: List[Actor.Ref[S, Message]]) -> Void
-  for ref in refs
-    _ = Actor.stop(ref, SHARD_STOP_MS)
+## Lets each shard handle what is in its inbox, then ends it; all of them
+## share one deadline. Whether every shard ended well.
+def finish[S](refs: List[Actor.Ref[S, Message]]) -> Bool
+  until = Time.monotonic_ms + SHARD_STOP_MS
+  stopped = refs.map do |ref| Actor.stop(ref, [until - Time.monotonic_ms, 0].max.unwrap!) end
+  failed = stopped.select { |result| !result.ok? }.size
+  for result in stopped
+    case result
+      error(e) -> IO.warn("A shard did not stop: #{e.message}")
+      ok(_) -> nil
+    end
   end
 
+  return false if failed > 0
+
   IO.warn("Redis is now ready to exit, bye bye...")
+  true
 end
 
 private
@@ -54,10 +65,15 @@ def watched(watch: Watch) -> Void
     case watch.signals.recv(WAIT_MS)
       error(_) -> nil
       ok(signal) ->
+        if watch.stopping.has_key?(SIGNAL)
+          IO.warn("You insist... exiting now.")
+          System.exit(1)
+        end
+
         watch.stopping.put(SIGNAL, System.signal_number(signal))
         IO.warn("Received #{name_of(signal)} scheduling shutdown...")
-        _ = Dock.stop(watch.server)
-        return
+        # In a task of its own: a second signal must not wait for the grace.
+        _stopper = Task.spawn do Dock.stop(watch.server) end
     end
   end
 end
