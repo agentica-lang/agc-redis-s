@@ -5,15 +5,13 @@
 import {Partial, Read} from "reader"
 import Reader from "reader"
 
-LF = 10
-
-export struct Stream
+struct Stream
   chunks: List[Bytes]
   have: Int
   partial: Partial
 end
 
-export enum Ending
+enum Ending
   ## The connection goes on.
   Open
   ## A protocol error; the text is the reply, then the connection closes.
@@ -23,17 +21,17 @@ export enum Ending
 end
 
 ## What one chunk gave: the requests it completed, in order, and what is next.
-export struct Fed
+struct Fed
   stream: Stream
   requests: List[List[Bytes]]
   ending: Ending
 end
 
 ## A stream with nothing held.
-export def start() -> Stream = Stream(chunks: [], have: 0, partial: Partial())
+def start() -> Stream = Stream(chunks: [], have: 0, partial: Partial())
 
 ## Adds a chunk and cuts every whole request out of what is held.
-export def feed(stream: Stream, chunk: Bytes) -> Fed
+def feed(stream: Stream, chunk: Bytes) -> Fed
   chunks = stream.chunks.push(chunk)
   have = stream.have + chunk.size
   if waiting?(stream.partial, have, chunk)
@@ -42,6 +40,10 @@ export def feed(stream: Stream, chunk: Bytes) -> Fed
 
   cut(Bytes.concat(chunks), stream.partial)
 end
+
+private
+
+LF = 10
 
 # Nothing can change yet: the request needs more bytes, or only a LF is missing
 # and this chunk has none (a line is refused at MAX_LINE, which needs a parse).

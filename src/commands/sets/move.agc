@@ -9,7 +9,9 @@ import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-export def commands() -> List[Command] = [Command(name: "smove", arity: 4, handler: &smove)]
+def commands() -> List[Command] = [Command(name: "smove", arity: 4, handler: &smove)]
+
+private
 
 def smove(call: Call) -> Outcome
   case Sets.held(call.keyspace, call.args[0], call.now_ms)

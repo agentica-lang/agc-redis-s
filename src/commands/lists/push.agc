@@ -8,19 +8,21 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
-# Whether a missing key is created.
-enum Create
-  Yes
-  No
-end
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "lpush", arity: -3, handler: &lpush),
     Command(name: "rpush", arity: -3, handler: &rpush),
     Command(name: "lpushx", arity: -3, handler: &lpushx),
     Command(name: "rpushx", arity: -3, handler: &rpushx),
   ]
+end
+
+private
+
+# Whether a missing key is created.
+enum Create
+  Yes
+  No
 end
 
 def lpush(call: Call) -> Outcome = push(call, End.Head, Create.Yes)

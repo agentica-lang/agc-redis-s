@@ -13,7 +13,7 @@ import {Reply} from "../../resp/reply"
 import Lists from "../../store/lists"
 import {End, Held, Seq} from "../../store/lists"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "lmove", arity: 5, handler: &lmove),
     Command(name: "rpoplpush", arity: 3, handler: &rpoplpush),
@@ -21,13 +21,15 @@ export def commands() -> List[Command]
   ]
 end
 
+private
+
 # Both words are read before any key.
 def lmove(call: Call) -> Outcome
   case end_of(call.args[2])
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(from) ->
       case end_of(call.args[3])
-        error(text) -> fail(call, text)
+        error(e) -> fail(call, e.message)
         ok(to) -> moved(call, from, to)
       end
   end
@@ -79,15 +81,15 @@ end
 # answers, a key of another type before it answers WRONGTYPE.
 def lmpop(call: Call) -> Outcome
   case Args.at_least_one(call.args[0], "ERR numkeys should be greater than 0")
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(numkeys) ->
       return fail(call, Errors.SYNTAX) if numkeys >= call.args.size - 1
 
       case end_of(call.args[numkeys + 1])
-        error(text) -> fail(call, text)
+        error(e) -> fail(call, e.message)
         ok(side) ->
           case count_of(call.args.drop(numkeys + 2))
-            error(text) -> fail(call, text)
+            error(e) -> fail(call, e.message)
             ok(count) -> first_list(call, call.args.drop(1).take(numkeys), side, count)
           end
       end

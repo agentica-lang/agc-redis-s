@@ -4,13 +4,9 @@
 import Args from "args"
 import {Call, Command, Outcome, fail_bytes, wrong_arity} from "command"
 
-# Redis cuts the command name and the echoed arguments at 128 bytes
-# (processCommand in server.c), so a huge argument is not sent back whole.
-SHOWN_BYTES = 128
-
 ## `name` is what the client typed; the lookup ignores its case. `call` holds
 ## the arguments after the name; `execute` sets `call.name`.
-export def execute(table: Map[String, Command], name: Bytes, call: Call) -> Outcome
+def execute(table: Map[String, Command], name: Bytes, call: Call) -> Outcome
   # Latin-1 maps every byte to a character, so this never fails.
   lower = Args.lower(name)
   # `client|id` is the key of a subcommand, never a command of its own.
@@ -21,6 +17,12 @@ export def execute(table: Map[String, Command], name: Bytes, call: Call) -> Outc
     some(command) -> run(command, table, call.with(name: lower))
   end
 end
+
+private
+
+# Redis cuts the command name and the echoed arguments at 128 bytes
+# (processCommand in server.c), so a huge argument is not sent back whole.
+SHOWN_BYTES = 128
 
 def run(command: Command, table: Map[String, Command], call: Call) -> Outcome
   return wrong_arity(call) if bad_arity?(command.arity, call.args.size + 1)

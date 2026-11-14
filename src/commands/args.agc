@@ -7,15 +7,15 @@ import Integer from "../resp/integer"
 ## drops it at 8 MiB, and an item takes 6 bytes at least, `$0\r\n\r\n`): the
 ## random commands refuse a negative count that asks for more, the only
 ## difference from Redis, which would stream it.
-export MAX_ITEMS = 1_300_000
+MAX_ITEMS = 1_300_000
 
 ## The word as lowercase text, for matching option names without case. Latin-1
 ## maps every byte to a character, so this never fails.
-export def lower(word: Bytes) -> String = word.decode("latin-1").unwrap!.downcase
+def lower(word: Bytes) -> String = word.decode("latin-1").unwrap!.downcase
 
 ## What Redis allows in a client name or a library name: printable ASCII
 ## without space. Its check is a C loop, so it stops at the first NUL byte.
-export def plain_word?(word: Bytes) -> Bool
+def plain_word?(word: Bytes) -> Bool
   for byte in word
     return true if byte == 0
 
@@ -26,19 +26,19 @@ export def plain_word?(word: Bytes) -> Bool
 end
 
 ## An attribute a client set: the empty text means "not set", as in Redis.
-export def present(word: Bytes) -> Optional[Bytes]
+def present(word: Bytes) -> Optional[Bytes]
   return none if word.empty?
 
   some(word)
 end
 
 ## An attribute as the text of CLIENT LIST: empty when not set.
-export def shown(word: Optional[Bytes]) -> Bytes = word.unwrap_or("".bytes)
+def shown(word: Optional[Bytes]) -> Bytes = word.unwrap_or("".bytes)
 
 ## The time argument of SET, GETEX, SETEX and PSETEX as an absolute deadline in
 ## ms (Redis's `getExpireMillisecondsOrReply`): it must be a positive integer.
 ## `relative` (EX, PX) adds the clock. The error is the whole reply text.
-export def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, command: String) -> Result[Int]
+def expire_ms(text: Bytes, seconds: Bool, relative: Bool, now_ms: Int, command: String) -> Result[Int]
   case Integer.parse(text)
     none -> error(Errors.NOT_INT)
     some(value) ->
@@ -61,7 +61,7 @@ end
 ## The time argument of the EXPIRE family (`expireGenericCommand`): any integer,
 ## also a negative one. `base_ms` is the clock for EXPIRE and PEXPIRE, 0 for
 ## the AT forms.
-export def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String) -> Result[Int]
+def expire_when(text: Bytes, seconds: Bool, base_ms: Int, command: String) -> Result[Int]
   case Integer.parse(text)
     none -> error(Errors.NOT_INT)
     some(value) ->
@@ -80,7 +80,7 @@ end
 
 ## A number that is zero or more (Redis's `getPositiveLongFromObjectOrReply`):
 ## the same `message` answers a word that is no number and a negative one.
-export def positive(text: Bytes, message: String) -> Result[Int]
+def positive(text: Bytes, message: String) -> Result[Int]
   case Integer.parse(text)
     none -> error(message)
     some(value) ->
@@ -92,7 +92,7 @@ end
 
 ## A number that is one or more (`getRangeLongFromObjectOrReply` from 1): the
 ## same `message` answers a word and a number below 1.
-export def at_least_one(text: Bytes, message: String) -> Result[Int]
+def at_least_one(text: Bytes, message: String) -> Result[Int]
   case Integer.parse(text)
     none -> error(message)
     some(value) ->
@@ -101,5 +101,7 @@ export def at_least_one(text: Bytes, message: String) -> Result[Int]
       ok(value)
   end
 end
+
+private
 
 def bad_expire(command: String) -> Result[Int] = error("ERR invalid expire time in '#{command}' command")

@@ -50,7 +50,7 @@ def slice_of(data: List[Int], start: Int, stop: Int) -> List[Int]
     hi = 0
   end
 
-  (0...size).to_a.select do |i| i >= lo and i <= hi end.map do |i| data[i] end
+  (0...size).to_a.select { |i| i >= lo and i <= hi }.map { |i| data[i] }
 end
 
 def written(old: List[Int], offset: Int, value: List[Int]) -> List[Int]

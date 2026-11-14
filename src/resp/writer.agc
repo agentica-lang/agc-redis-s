@@ -2,17 +2,10 @@
 
 import {Reply} from "reply"
 
-CR = 13
-LF = 10
-SPACE = 32
-CRLF = "\r\n".bytes
-HEADER_COUNT = 1024
-HEADERS = (0...HEADER_COUNT).to_a.map do |size| "$#{size}\r\n".bytes end
-
 ## The last bytes before a connection closes on a protocol error.
-export def protocol_error(text: String) -> Bytes = "-ERR #{text}\r\n".bytes
+def protocol_error(text: String) -> Bytes = "-ERR #{text}\r\n".bytes
 
-export def encode(reply: Reply) -> Bytes
+def encode(reply: Reply) -> Bytes
   return case reply
     Reply.Simple(text) -> line("+".bytes, text.bytes)
     Reply.Error(text) -> line("-".bytes, text)
@@ -27,14 +20,28 @@ end
 
 ## The `$N\r\n` line before a bulk string of N bytes; the common small sizes
 ## are built once (Redis's `shared.bulkhdr`).
-export def bulk_header(size: Int) -> Bytes
+def bulk_header(size: Int) -> Bytes
   return HEADERS[size] if size < HEADER_COUNT
 
   "$#{size}\r\n".bytes
 end
 
 ## The `*N\r\n` line before an array of N items.
-export def array_header(size: Int) -> Bytes = "*#{size}\r\n".bytes
+def array_header(size: Int) -> Bytes = "*#{size}\r\n".bytes
+
+private
+
+CR = 13
+
+LF = 10
+
+SPACE = 32
+
+CRLF = "\r\n".bytes
+
+HEADER_COUNT = 1024
+
+HEADERS = (0...HEADER_COUNT).to_a.map do |size| "$#{size}\r\n".bytes end
 
 # A CR or LF inside a status line ends it early, so a client that sends one in
 # an argument could forge replies. Redis turns them into spaces too.

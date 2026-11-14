@@ -13,9 +13,9 @@ import {Session} from "../session/session"
 import Databases from "../store/databases"
 
 ## The version HELLO and INFO report: the Redis release whose behavior is copied.
-export REDIS_VERSION = "7.2.17"
+REDIS_VERSION = "7.2.17"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "ping", arity: -1, handler: &ping),
     Command(name: "echo", arity: 2, handler: &echo),
@@ -24,6 +24,8 @@ export def commands() -> List[Command]
     Command(name: "select", arity: 2, handler: &select),
   ]
 end
+
+private
 
 def ping(call: Call) -> Outcome
   return reply(call, Reply.Simple("PONG")) if call.args.empty?

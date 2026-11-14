@@ -101,7 +101,7 @@ def test_wrong_type_both_ways() -> Result[Void]
 
   setup = [["HSET", "h", "f", "1"], ["SET", "s", "1"]]
   got = ask(setup.concat(on_hash))
-  try Test.eq(got, ":1\r\n+OK\r\n#{on_hash.map do |_| WRONGTYPE end.join("")}")
+  try Test.eq(got, ":1\r\n+OK\r\n#{on_hash.map { |_| WRONGTYPE }.join("")}")
   odd = ask(
     setup.concat([["INCRBY", "h", "x"], ["MGET", "h", "s"], ["SETNX", "h", "x"], ["TYPE", "h"], ["TYPE", "s"]]),
   )
@@ -123,7 +123,7 @@ def test_wrong_type_both_ways() -> Result[Void]
     ["HSTRLEN", "s", "a"],
   ]
 
-  try Test.eq(ask(setup.concat(on_string)), ":1\r\n+OK\r\n#{on_string.map do |_| WRONGTYPE end.join("")}")
+  try Test.eq(ask(setup.concat(on_string)), ":1\r\n+OK\r\n#{on_string.map { |_| WRONGTYPE }.join("")}")
   replaced = ask(setup.concat([["SET", "h", "v"], ["TYPE", "h"], ["HSET", "h", "a", "1"]]))
   Test.eq(replaced, ":1\r\n+OK\r\n+OK\r\n+string\r\n#{WRONGTYPE}")
 end
@@ -198,7 +198,7 @@ def test_hincrby() -> Result[Void]
     "-ERR value is not an integer or out of range",
     "$2\r\n-2",
     "+OK",
-    WRONGTYPE.trim,
+    WRONGTYPE.strip,
     "-ERR value is not an integer or out of range",
   ]
 
@@ -235,7 +235,7 @@ def test_hincrbyfloat() -> Result[Void]
     "-ERR value is not a valid float",
     "$7\r\n5010.25",
     "+OK",
-    WRONGTYPE.trim,
+    WRONGTYPE.strip,
   ]
 
   Test.eq(got, "#{want.join("\r\n")}\r\n")
@@ -260,7 +260,7 @@ def test_error_order_on_a_hash_key() -> Result[Void]
     "-ERR offset is out of range",
     "-ERR value is not an integer or out of range",
     "-ERR invalid expire time in 'set' command",
-    WRONGTYPE.trim,
+    WRONGTYPE.strip,
     "-ERR syntax error",
   ]
 
@@ -361,8 +361,8 @@ def test_hrandfield_errors() -> Result[Void]
 
   want = [
     "+OK",
-    WRONGTYPE.trim,
-    WRONGTYPE.trim,
+    WRONGTYPE.strip,
+    WRONGTYPE.strip,
     "-ERR value is not an integer or out of range",
     "-ERR syntax error",
     "-ERR syntax error",
@@ -410,10 +410,10 @@ def test_hscan() -> Result[Void]
   want = [
     ":3",
     "+OK",
-    "*2\r\n$1\r\n0\r\n*2\r\n#{pair("b", "2").trim}",
+    "*2\r\n$1\r\n0\r\n*2\r\n#{pair("b", "2").strip}",
     "-ERR syntax error",
     "*2\r\n$1\r\n0\r\n*0",
-    WRONGTYPE.trim,
+    WRONGTYPE.strip,
     "-ERR invalid cursor",
     "-ERR invalid cursor",
     "-ERR syntax error",

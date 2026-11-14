@@ -28,7 +28,7 @@
 ##
 ## The string helpers below answer for a string only; a command checks the
 ## variant first (`string?`) and answers WRONGTYPE for the others.
-export enum Value
+enum Value
   Str(Bytes)
   Appended(List[Bytes], Int)
   Hash(Map[Bytes, Bytes])
@@ -37,7 +37,7 @@ export enum Value
 end
 
 ## The name `TYPE` and `SCAN ... TYPE` use.
-export def type_name(value: Value) -> String
+def type_name(value: Value) -> String
   case value
     Value.Str(_) -> "string"
     Value.Appended(_, _) -> "string"
@@ -47,11 +47,11 @@ export def type_name(value: Value) -> String
   end
 end
 
-export def string?(value: Value) -> Bool = type_name(value) == "string"
+def string?(value: Value) -> Bool = type_name(value) == "string"
 
 ## The bytes of a string value. For `Appended` this joins the pieces: a command
 ## that wants the text uses `settled`, so the join happens once per value.
-export def joined_text(value: Value) -> Bytes
+def joined_text(value: Value) -> Bytes
   case value
     Value.Str(bytes) -> bytes
     Value.Appended(pieces, _) -> Bytes.concat(pieces)
@@ -62,7 +62,7 @@ export def joined_text(value: Value) -> Bytes
 end
 
 ## The size in bytes of a string value, without joining.
-export def value_size(value: Value) -> Int
+def value_size(value: Value) -> Int
   case value
     Value.Str(bytes) -> bytes.size
     Value.Appended(_, total) -> total
@@ -74,7 +74,7 @@ end
 
 ## The value with `more` added at its end, in O(1) of the size: the pieces are
 ## kept, not joined.
-export def with_more(value: Value, more: Bytes) -> Value
+def with_more(value: Value, more: Bytes) -> Value
   return value if more.empty?
 
   case value
@@ -90,7 +90,7 @@ export def with_more(value: Value, more: Bytes) -> Value
 end
 
 ## True when reading the text joins pieces.
-export def pending?(value: Value) -> Bool
+def pending?(value: Value) -> Bool
   case value
     Value.Str(_) -> false
     Value.Appended(_, _) -> true

@@ -10,12 +10,7 @@ import {Reply} from "../resp/reply"
 import Databases from "../store/databases"
 import Keyspace from "../store/keyspace"
 
-# The sections this server has; the others (persistence, stats, replication,
-# cpu...) are not there. With no argument, or `default`, `all` or `everything`,
-# all of them; a name only that section, and an unknown name nothing.
-SECTIONS = ["server", "clients", "memory", "keyspace"]
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "info", arity: -1, handler: &info),
     Command(name: "dbsize", arity: 1, handler: &dbsize),
@@ -24,6 +19,13 @@ export def commands() -> List[Command]
     Command(name: "flushdb", arity: -1, handler: &flushdb),
   ]
 end
+
+private
+
+# The sections this server has; the others (persistence, stats, replication,
+# cpu...) are not there. With no argument, or `default`, `all` or `everything`,
+# all of them; a name only that section, and an unknown name nothing.
+SECTIONS = ["server", "clients", "memory", "keyspace"]
 
 def dbsize(call: Call) -> Outcome = reply(call, Reply.Integer(Keyspace.size(call.keyspace)))
 

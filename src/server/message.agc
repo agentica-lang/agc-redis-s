@@ -5,7 +5,7 @@
 
 import Dock from "pkg/dock/dock"
 
-export enum Message
+enum Message
   ## A new client: it gets a session.
   Open(Dock.Conn)
   ## The requests one receive completed, in order: the client and, for each,

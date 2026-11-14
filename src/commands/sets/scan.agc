@@ -9,7 +9,9 @@ import ScanPages from "../../store/scan"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-export def commands() -> List[Command] = [Command(name: "sscan", arity: -3, handler: &sscan)]
+def commands() -> List[Command] = [Command(name: "sscan", arity: -3, handler: &sscan)]
+
+private
 
 # SSCAN key cursor [MATCH pattern] [COUNT n]: the cursor is read first, then
 # the key, then the options. A member that stays for the whole scan is in
@@ -29,7 +31,7 @@ end
 
 def scan_members(call: Call, members: Members, cursor: Int) -> Outcome
   case Scan.read_options(call.args.drop(2), false)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(options) ->
       page = ScanPages.page(Sets.list(members), cursor, options.count)
       listed = page.keys.select do |member| Scan.matches?(options, member) end

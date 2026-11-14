@@ -8,16 +8,7 @@ import {Call, Command, Outcome, fail, fail_bytes, reply, write} from "command"
 import {Reply} from "../resp/reply"
 import Keyspace from "../store/keyspace"
 
-# The words of NX, XX, GT and LT; `refused` is the reply when they do not fit.
-struct Condition
-  nx: Bool = false
-  xx: Bool = false
-  gt: Bool = false
-  lt: Bool = false
-  refused: Optional[Bytes] = none
-end
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "expire", arity: -3, handler: &expire),
     Command(name: "pexpire", arity: -3, handler: &pexpire),
@@ -25,6 +16,17 @@ export def commands() -> List[Command]
     Command(name: "pexpireat", arity: -3, handler: &pexpireat),
     Command(name: "persist", arity: 2, handler: &persist),
   ]
+end
+
+private
+
+# The words of NX, XX, GT and LT; `refused` is the reply when they do not fit.
+struct Condition
+  nx: Bool = false
+  xx: Bool = false
+  gt: Bool = false
+  lt: Bool = false
+  refused: Optional[Bytes] = none
 end
 
 def expire(call: Call) -> Outcome = expire_generic(call, true, call.now_ms)
@@ -79,7 +81,7 @@ def expire_generic(call: Call, seconds: Bool, base_ms: Int) -> Outcome
   end
 
   case Args.expire_when(call.args[1], seconds, base_ms, call.name)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(when) -> expire_key(call, found, when)
   end
 end

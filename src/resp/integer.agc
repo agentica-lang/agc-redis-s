@@ -1,13 +1,13 @@
 ## The integers of the wire and of the arguments: one reading, Redis's.
 
-MIN_DIV_10 = -922_337_203_685_477_580
-export INT_MIN = -9_223_372_036_854_775_807 - 1
-export INT_MAX = 9_223_372_036_854_775_807
+INT_MIN = -9_223_372_036_854_775_807 - 1
+
+INT_MAX = 9_223_372_036_854_775_807
 
 ## An integer as Redis's `string2ll` reads it: digits only, one optional `-`, no
 ## `+`, no space, no leading zero (`0` alone is fine, `-0` is not), and it must
 ## fit in 64 bits. `none` otherwise.
-export def parse(text: Bytes) -> Optional[Int]
+def parse(text: Bytes) -> Optional[Int]
   return none if text.empty?
 
   negative = text[0] == 45
@@ -35,3 +35,7 @@ export def parse(text: Bytes) -> Optional[Int]
 
   some(-total)
 end
+
+private
+
+MIN_DIV_10 = -922_337_203_685_477_580

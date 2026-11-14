@@ -10,11 +10,13 @@ import {Reply} from "../../resp/reply"
 import Strings from "../../store/strings"
 import {Value, value_size} from "../../store/value"
 
-TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [Command(name: "append", arity: 3, handler: &append), Command(name: "setrange", arity: 4, handler: &setrange)]
 end
+
+private
+
+TOO_BIG = "ERR string exceeds maximum allowed size (proto-max-bulk-len)"
 
 # The pieces are kept, not joined: see `Value`. The size check uses the stored
 # size.

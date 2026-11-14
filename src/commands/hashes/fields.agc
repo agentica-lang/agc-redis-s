@@ -8,7 +8,7 @@ import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "hset", arity: -4, handler: &hset),
     Command(name: "hmset", arity: -4, handler: &hmset),
@@ -21,6 +21,8 @@ export def commands() -> List[Command]
     Command(name: "hstrlen", arity: 3, handler: &hstrlen),
   ]
 end
+
+private
 
 def hset(call: Call) -> Outcome = set_pairs(call, false)
 

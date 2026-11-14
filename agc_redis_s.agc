@@ -20,7 +20,7 @@ MAX_PENDING_BYTES = 8_388_608
 
 def main() -> Void
   case Config.parse(System.args())
-    error(text) -> fail(text)
+    error(e) -> fail(e.message)
     ok(config) -> start(config)
   end
 end
@@ -33,7 +33,7 @@ def start(config: Config.Config) -> Void
   hooked = Dock.on_close(options) do |conn| Connection.gone(inbox, conn.id) end
   started = Dock.start(hooked) do |conn| Connection.serve(conn, inbox) end
   case started
-    error(text) -> fail(text)
+    error(e) -> fail(e.message)
     ok(server) ->
       # Without the store task no command can run: dock stops the server, and
       # `wait` returns.
@@ -42,7 +42,7 @@ def start(config: Config.Config) -> Void
       puts("ready #{config.bind}:#{server.port}")
       IO.flush()
       case Dock.wait(server)
-        error(text) -> fail(text)
+        error(e) -> fail(e.message)
         ok(_) -> fail("the store task stopped")
       end
   end

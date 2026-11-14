@@ -33,7 +33,7 @@ import StringSet from "strings/set"
 import StringTimed from "strings/timed"
 import Ttl from "ttl"
 
-export def build() -> Map[String, Command]
+def build() -> Map[String, Command]
   rows = Connection.commands().concat(Client.commands())
   rows = rows.concat(Catalog.commands()).concat(Config.commands()).concat(Server.commands())
   rows = (

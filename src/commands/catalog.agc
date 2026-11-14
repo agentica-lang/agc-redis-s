@@ -5,13 +5,15 @@
 import {Call, Command, Outcome, reply} from "command"
 import {Reply} from "../resp/reply"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "command", arity: -1, handler: &all, container: true),
     Command(name: "command|count", arity: 2, handler: &count),
     Command(name: "command|docs", arity: -2, handler: &docs),
   ]
 end
+
+private
 
 # The rows of the table that are commands; `client|id` is a subcommand.
 def top_level(call: Call) -> List[Command] = call.table.values.select do |row| not row.name.include?("|") end

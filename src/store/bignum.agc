@@ -3,16 +3,14 @@
 ## 30 bits, so a product of a limb and a small factor fits in an Int. A number
 ## has no zero limb at its end, and 0 is the empty list.
 
-LIMB = 1_073_741_824
-
 ## A quotient and the remainder of a division by a small number.
-export struct Divided
+struct Divided
   quotient: List[Int]
   remainder: Int
 end
 
 ## `n` as a number; `n` is not negative.
-export def from_int(n: Int) -> List[Int]
+def from_int(n: Int) -> List[Int]
   limbs: List[Int] = []
   rest = n
   while rest > 0
@@ -24,7 +22,7 @@ export def from_int(n: Int) -> List[Int]
 end
 
 ## The number of bits: 0 for 0, else the position of the highest 1 bit plus one.
-export def bit_length(a: List[Int]) -> Int
+def bit_length(a: List[Int]) -> Int
   return 0 if a.empty?
 
   top = a[a.size - 1]
@@ -38,7 +36,7 @@ export def bit_length(a: List[Int]) -> Int
 end
 
 ## `a * small`, with `small` between 0 and 2^30.
-export def mul_small(a: List[Int], small: Int) -> List[Int]
+def mul_small(a: List[Int], small: Int) -> List[Int]
   return [] if small == 0
 
   out: List[Int] = []
@@ -56,7 +54,7 @@ export def mul_small(a: List[Int], small: Int) -> List[Int]
   out
 end
 
-export def add(a: List[Int], b: List[Int]) -> List[Int]
+def add(a: List[Int], b: List[Int]) -> List[Int]
   out: List[Int] = []
   carry = 0
   i = 0
@@ -79,7 +77,7 @@ export def add(a: List[Int], b: List[Int]) -> List[Int]
 end
 
 ## `a - b`, with `b` not greater than `a`.
-export def sub(a: List[Int], b: List[Int]) -> List[Int]
+def sub(a: List[Int], b: List[Int]) -> List[Int]
   out: List[Int] = []
   borrow = 0
   i = 0
@@ -103,7 +101,7 @@ export def sub(a: List[Int], b: List[Int]) -> List[Int]
 end
 
 ## -1, 0 or 1 as `a` is less than, equal to or greater than `b`.
-export def compare(a: List[Int], b: List[Int]) -> Int
+def compare(a: List[Int], b: List[Int]) -> Int
   if a.size != b.size
     return -1 if a.size < b.size
 
@@ -125,7 +123,7 @@ export def compare(a: List[Int], b: List[Int]) -> Int
 end
 
 ## `a * 2^bits`.
-export def shift_left(a: List[Int], bits: Int) -> List[Int]
+def shift_left(a: List[Int], bits: Int) -> List[Int]
   return a if a.empty? or bits == 0
 
   zeros: List[Int] = (0...(bits / 30)).to_a.map do |_| 0 end
@@ -134,7 +132,7 @@ end
 
 ## `a / 2^bits` rounded to the nearest whole number, a tie going to the even
 ## one: the rounding of an x87 FPU and of `printf`.
-export def shift_right_even(a: List[Int], bits: Int) -> List[Int]
+def shift_right_even(a: List[Int], bits: Int) -> List[Int]
   return a if bits == 0 or a.empty?
 
   limbs = bits / 30
@@ -146,7 +144,7 @@ export def shift_right_even(a: List[Int], bits: Int) -> List[Int]
 end
 
 ## `a / small` and the remainder, with `small` between 1 and 2^30.
-export def divide_small(a: List[Int], small: Int) -> Divided
+def divide_small(a: List[Int], small: Int) -> Divided
   top_first: List[Int] = []
   rest = 0
   i = a.size - 1
@@ -161,7 +159,7 @@ export def divide_small(a: List[Int], small: Int) -> Divided
 end
 
 ## The digits of `a`, without leading zeros ("0" for 0).
-export def to_decimal(a: List[Int]) -> String
+def to_decimal(a: List[Int]) -> String
   return "0" if a.empty?
 
   chunks: List[Int] = []
@@ -175,6 +173,10 @@ export def to_decimal(a: List[Int]) -> String
   top = chunks.reverse
   ["#{top[0]}"].concat(top.drop(1).map do |n| pad9(n) end).join("")
 end
+
+private
+
+LIMB = 1_073_741_824
 
 # The number of the limbs of `a` below `limbs`, shifted by `inner` bits, whole.
 def shift_floor(a: List[Int], limbs: Int, inner: Int) -> List[Int]

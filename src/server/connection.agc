@@ -9,17 +9,8 @@ import {Fed} from "../resp/stream"
 import Stream from "../resp/stream"
 import {Message} from "message"
 
-READ_BYTES = 65_536
-# How long a request waits for room in the inbox of the store task.
-INBOX_SEND_MS = 1000
-
-enum Drained
-  More(Stream.Stream)
-  Broken(Bytes)
-end
-
 ## Serves the client until it leaves.
-export def serve(conn: Dock.Conn, inbox: Channel[Message]) -> Void
+def serve(conn: Dock.Conn, inbox: Channel[Message]) -> Void
   case inbox.send(Message.Open(conn), INBOX_SEND_MS)
     error(_) -> return
     ok(_) -> nil
@@ -34,13 +25,25 @@ end
 ## dock calls this when the connection ended. The store task must learn of it,
 ## or the session stays for good: retry until the message is in or nobody will
 ## read it.
-export def gone(inbox: Channel[Message], id: Int) -> Void
+def gone(inbox: Channel[Message], id: Int) -> Void
   while true
     case inbox.send(Message.Gone(id), INBOX_SEND_MS)
       ok(_) -> return
       error(_) -> return if inbox.closed?
     end
   end
+end
+
+private
+
+READ_BYTES = 65_536
+
+# How long a request waits for room in the inbox of the store task.
+INBOX_SEND_MS = 1000
+
+enum Drained
+  More(Stream.Stream)
+  Broken(Bytes)
 end
 
 # The store task sends the farewell after the replies that are still in the

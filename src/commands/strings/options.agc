@@ -11,12 +11,12 @@ import {Call} from "../command"
 
 ## SET takes NX, XX, GET and KEEPTTL; GETEX takes PERSIST. Anything else is a
 ## syntax error.
-export enum Form
+enum Form
   Set
   GetEx
 end
 
-export struct Options
+struct Options
   nx: Bool = false
   xx: Bool = false
   get: Bool = false
@@ -27,7 +27,7 @@ export struct Options
   time: Optional[Bytes] = none
 end
 
-export def read(words: List[Bytes], form: Form) -> Result[Options]
+def read(words: List[Bytes], form: Form) -> Result[Options]
   found = Options()
   i = 0
   while i < words.size
@@ -70,7 +70,7 @@ end
 
 ## The deadline the options ask for; `none` when they ask for none. The error is
 ## the reply.
-export def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
+def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
   case found.time
     none -> ok(none)
     some(text) ->
@@ -79,6 +79,8 @@ export def deadline_of(call: Call, found: Options) -> Result[Optional[Int]]
       ok(some(try Args.expire_ms(text, seconds, relative, call.now_ms, call.name)))
   end
 end
+
+private
 
 # The words that only one of the forms knows.
 def own?(form: Form, word: String) -> Bool

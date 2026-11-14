@@ -15,15 +15,7 @@ import Glob from "../store/glob"
 import Keyspace from "../store/keyspace"
 import {Value, type_name} from "../store/value"
 
-STAR = 42
-
-# What COPY was asked: the database (the selected one by default) and REPLACE.
-struct Copying
-  db: Int
-  replace: Bool = false
-end
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     Command(name: "del", arity: -2, handler: &del),
     Command(name: "unlink", arity: -2, handler: &del),
@@ -43,7 +35,17 @@ end
 ## The index of the pick among `size` keys (`size` > 0). It drops the 16 low bits
 ## of the generator, which are weak, and keeps about 46 bits, so a database of
 ## any size has every index reachable.
-export def pick_index(random: Int, size: Int) -> Int = (random / 65536) % size
+def pick_index(random: Int, size: Int) -> Int = (random / 65536) % size
+
+private
+
+STAR = 42
+
+# What COPY was asked: the database (the selected one by default) and REPLACE.
+struct Copying
+  db: Int
+  replace: Bool = false
+end
 
 # Memory is freed at once here, so UNLINK is DEL. A key named twice counts
 # once: the second time it is gone. An expired key is dropped (Redis expires it
@@ -144,7 +146,7 @@ end
 # `selectDb`: the index of one of the 16 databases.
 def database_index(word: Bytes) -> Result[Int]
   case int_of(word, none)
-    error(text) -> error(text)
+    error(e) -> error(e)
     ok(index) ->
       return error(Errors.DB_RANGE) if index < 0 or index >= Databases.COUNT
 
@@ -154,7 +156,7 @@ end
 
 def move(call: Call) -> Outcome
   case database_index(call.args[1])
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(target) -> move_to(call, target)
   end
 end
@@ -187,7 +189,7 @@ def copy_options(call: Call) -> Result[Copying]
       found = found.with(replace: true)
     elsif word == "db" and i + 1 < call.args.size
       case database_index(call.args[i + 1])
-        error(text) -> return error(text)
+        error(e) -> return error(e)
         ok(index) -> found = found.with(db: index)
       end
 
@@ -205,7 +207,7 @@ end
 # Values are immutable, so the copy shares the value. The deadline comes along.
 def copy(call: Call) -> Outcome
   case copy_options(call)
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(found) -> copy_to(call, found)
   end
 end
@@ -233,7 +235,7 @@ end
 
 def swapdb(call: Call) -> Outcome
   case int_of(call.args[0], some("ERR invalid first DB index"))
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(first) -> swap_with(call, first)
   end
 end
@@ -241,7 +243,7 @@ end
 # Both are read as integers before either is checked against the 16.
 def swap_with(call: Call, first: Int) -> Outcome
   case int_of(call.args[1], some("ERR invalid second DB index"))
-    error(text) -> fail(call, text)
+    error(e) -> fail(call, e.message)
     ok(second) -> swap_checked(call, first, second)
   end
 end

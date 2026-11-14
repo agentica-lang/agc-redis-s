@@ -15,18 +15,20 @@ import {Reply} from "../../resp/reply"
 import Sets from "../../store/sets"
 import {Held, Members} from "../../store/sets"
 
-POSITIVE = "ERR value is out of range, must be positive"
-
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [Command(name: "spop", arity: -2, handler: &spop), Command(name: "srandmember", arity: -2, handler: &srandmember)]
 end
+
+private
+
+POSITIVE = "ERR value is out of range, must be positive"
 
 def spop(call: Call) -> Outcome
   return fail(call, Errors.SYNTAX) if call.args.size > 2
 
   if call.args.size == 2
     case Args.positive(call.args[1], POSITIVE)
-      error(text) -> return fail(call, text)
+      error(e) -> return fail(call, e.message)
       ok(count) -> return pop_some(call, count)
     end
   end

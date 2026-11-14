@@ -6,27 +6,12 @@
 
 import Integer from "integer"
 
-MAX_BULK = 536_870_912
-# A deliberate memory guard, stricter than Redis 7 (which allows INT_MAX items).
-MAX_ARRAY = 1_048_576
-# Redis closes a client that holds more than this in its query buffer.
-MAX_QUERY = 1_073_741_824
 # Redis's PROTO_INLINE_MAX_SIZE: a header or inline line longer than this
 # without a LF is an error, so a line that never ends cannot grow the buffer.
-export MAX_LINE = 65_536
-LF = 10
-CR = 13
-DOLLAR = 36
-STAR = 42
-ZERO = 48
-NINE = 57
-DQUOTE = 34
-SQUOTE = 39
-BACKSLASH = 92
-LOWER_X = 120
+MAX_LINE = 65_536
 
 ## Where reading goes on, and what an unfinished array holds so far.
-export struct Partial
+struct Partial
   ## Offset in the buffer where the next step starts.
   at: Int = 0
   ## Bytes, counted from `at`, the buffer must hold before a retry can go
@@ -44,7 +29,7 @@ export struct Partial
   held: Int = 0
 end
 
-export enum Read
+enum Read
   ## One request; `next` is the offset after it.
   Request(List[Bytes], Int)
   ## An empty line or an empty array: nothing to run, go on at the offset.
@@ -56,6 +41,47 @@ export enum Read
   ## The request is past the query buffer limit; Redis closes without a reply.
   Overflow
 end
+
+## Reads the request that starts at `from.at`.
+def read_request(buf: Bytes, from: Partial) -> Read
+  return array_items(buf, from) if from.remaining > 0
+
+  return Read.Incomplete(from.with(need: 1, scanned: 0, line: false)) if from.at >= buf.size
+
+  return read_array(buf, from) if buf[from.at] == STAR
+
+  read_inline(buf, from)
+end
+
+private
+
+MAX_BULK = 536_870_912
+
+# A deliberate memory guard, stricter than Redis 7 (which allows INT_MAX items).
+MAX_ARRAY = 1_048_576
+
+# Redis closes a client that holds more than this in its query buffer.
+MAX_QUERY = 1_073_741_824
+
+LF = 10
+
+CR = 13
+
+DOLLAR = 36
+
+STAR = 42
+
+ZERO = 48
+
+NINE = 57
+
+DQUOTE = 34
+
+SQUOTE = 39
+
+BACKSLASH = 92
+
+LOWER_X = 120
 
 enum Line
   Found(Int)
@@ -71,17 +97,6 @@ end
 enum Arg
   Done(List[Int], Int)
   Unbalanced
-end
-
-## Reads the request that starts at `from.at`.
-export def read_request(buf: Bytes, from: Partial) -> Read
-  return array_items(buf, from) if from.remaining > 0
-
-  return Read.Incomplete(from.with(need: 1, scanned: 0, line: false)) if from.at >= buf.size
-
-  return read_array(buf, from) if buf[from.at] == STAR
-
-  read_inline(buf, from)
 end
 
 # The offset of the LF of the line at `from.at`. Without one, the line may

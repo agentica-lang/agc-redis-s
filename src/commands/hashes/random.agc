@@ -10,7 +10,9 @@ import {Reply} from "../../resp/reply"
 import Hashes from "../../store/hashes"
 import {Held} from "../../store/hashes"
 
-export def commands() -> List[Command] = [Command(name: "hrandfield", arity: -2, handler: &hrandfield)]
+def commands() -> List[Command] = [Command(name: "hrandfield", arity: -2, handler: &hrandfield)]
+
+private
 
 # HRANDFIELD key [count [WITHVALUES]]. The count is read first, then the
 # options, then the key (hrandfieldCommand).

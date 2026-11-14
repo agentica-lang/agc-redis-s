@@ -18,8 +18,8 @@ jobs:
       - name: Install the pinned Agentica release
         uses: agentica-lang/setup-agentica@v1
         with:
-          version: 0.30.0
-          sha256: cad88bfdd768271efd31e4a8b84f5e8b0c7a232edae27b494e6d518cbc401e38 # linux-x86_64
+          version: 0.31.1
+          sha256: 82a516c5f83f3c68e9e215bb672301e97ffa9fb15edf01c3b153f6819b9b51df # linux-x86_64
 
       - name: Check, format and test
         run: |

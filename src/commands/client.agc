@@ -9,7 +9,7 @@ import {Call, Command, Outcome, container, fail, fail_bytes, reply, reply_with_s
 import {Reply} from "../resp/reply"
 import {Session} from "../session/session"
 
-export def commands() -> List[Command]
+def commands() -> List[Command]
   [
     container("client"),
     Command(name: "client|id", arity: 2, handler: &id),
@@ -19,6 +19,8 @@ export def commands() -> List[Command]
     Command(name: "client|list", arity: -2, handler: &list),
   ]
 end
+
+private
 
 def id(call: Call) -> Outcome = reply(call, Reply.Integer(call.client_id))
 

@@ -1,6 +1,6 @@
 ## A reply to a client: the RESP2 types a command can answer with.
 
-export enum Reply
+enum Reply
   Simple(String)
   ## The text is bytes because it may echo what the client sent.
   Error(Bytes)
