@@ -92,8 +92,11 @@ class SmokeTest(unittest.TestCase):
                 self.assertEqual(read_exactly(sock, 10), b"$1000000\r\n")
                 server.proc.send_signal(signal.SIGTERM)
                 time.sleep(0.2)
+                started = time.monotonic()
                 server.proc.send_signal(signal.SIGTERM)
                 self.assertEqual(server.proc.wait(timeout=10), 1)
+                # Well under what is left of the 1 s grace.
+                self.assertLess(time.monotonic() - started, 0.5)
             self.assertIn(b"You insist... exiting now.", server.rest_of_output())
         finally:
             server.stop()

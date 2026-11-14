@@ -72,7 +72,8 @@ def watched(watch: Watch) -> Void
 
         watch.stopping.put(SIGNAL, System.signal_number(signal))
         IO.warn("Received #{name_of(signal)} scheduling shutdown...")
-        _ = Dock.stop(watch.server)
+        # In a task of its own: a second signal must not wait for the grace.
+        _stopper = Task.spawn do Dock.stop(watch.server) end
     end
   end
 end
