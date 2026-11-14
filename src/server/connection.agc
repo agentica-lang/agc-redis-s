@@ -84,9 +84,10 @@ end
 ## every message is sent before the first answer is read, so the shards work at
 ## once. A request on several shards locks them in order of shard (no two
 ## connections can wait for each other); the requests sent before it to those
-## shards run first, as an inbox keeps its order. A shard that does not take a
-## message ends the chunk there: only the requests before it run, and the
-## connection closes after their replies.
+## shards run first, as an inbox keeps its order. A full inbox makes the
+## connection wait, as Redis slows a client down; a shard that has ended ends
+## the chunk there: only the requests before it run, and the connection closes
+## after their replies.
 def answer(shards: Shards, empty: Store, client: Client, requests: List[List[Bytes]]) -> Done
   pending: List[Pending] = []
   batch = Batch()
@@ -178,9 +179,10 @@ private
 READ_BYTES = 65_536
 CLIENTS = "connected"
 
-# How long a request waits for room in the inbox of a shard, and for its answer.
-SEND_MS = 1000
+# How long a request waits for its answer.
 ANSWER_MS = 30_000
+# How long one wait for room in a full inbox lasts before it starts again.
+ROOM_MS = 1000
 
 # A reply that is known, or one a shard will give.
 enum Pending
@@ -234,16 +236,27 @@ end
 def ran(done: Runner.Ran) -> Done = Done(client: done.client, reply: done.reply, close: done.close)
 
 # The batch sent, as its pending reply (none to send: no reply); none when the
-# shard did not take it.
+# shard has ended.
 def flushed(shards: Shards, batch: Batch, client: Client) -> Optional[List[Pending]]
   return some([]) if batch.requests.empty?
 
   answer: Channel[Bytes] = Channel.new(1)
   message = Message.Run(batch.requests, client, answer)
-  case Actor.cast(shards.addresses[batch.shard], message, SEND_MS)
-    ok(_) -> some([Pending.Asked(answer)])
-    error(_) -> none
+  return none if not delivered(shards.addresses[batch.shard], message)
+
+  some([Pending.Asked(answer)])
+end
+
+# Waits for room as long as the shard runs; false once it has ended.
+def delivered(address: Address[Message], message: Message) -> Bool
+  while true
+    case Actor.cast(address, message, ROOM_MS)
+      ok(_) -> return true
+      error(e) -> return false if not e.is_a?("channel.timeout")
+    end
   end
+
+  false
 end
 
 # The replies in order; the session is the connection's, as only requests that
@@ -270,7 +283,7 @@ def sized(shards: Shards) -> Optional[List[Databases.Size]]
   answers: List[Channel[List[Databases.Size]]] = []
   for address in shards.addresses
     answer: Channel[List[Databases.Size]] = Channel.new(1)
-    return none if not Actor.cast(address, Message.Sizes(answer), SEND_MS).ok?
+    return none if not delivered(address, Message.Sizes(answer))
 
     answers = answers.push(answer)
   end

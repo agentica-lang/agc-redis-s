@@ -48,12 +48,11 @@ def test_a_loan_that_comes_too_late_changes_no_shard() -> Result[Void]
   stopped(rig)
 end
 
-# A shard with an inbox of 1 is busy lending and its inbox is full: the SET
-# for it is refused after the send timeout, so only the PING before it answers,
-# the PING after it does not run, and the connection closes.
-def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
-  # The lend outlasts the send timeout (1 s), so the inbox stays full.
-  rig = started_with(1, 1, 5000)
+# A shard with an inbox of 1 is busy lending and its inbox is full for longer
+# than one wait for room: the SET waits, as Redis slows a client down, and
+# every request answers once the lend ends.
+def test_a_full_inbox_slows_the_request_down() -> Result[Void]
+  rig = started_with(1, 1, 1500)
   shards = rig.shards
   out: Channel[Loan] = Channel.new(1)
   back: Channel[Payback] = Channel.new(1)
@@ -63,11 +62,22 @@ def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
   try shards.addresses[0].send(Message.Sizes(sizes), 1000)
   requests = [["PING".bytes], ["SET".bytes, "a".bytes, "1".bytes], ["PING".bytes]]
   done = Connection.answer(shards, Engine.start(fresh()), Engine.client(1), requests)
-  back.close
+  try Test.eq(done.close, false)
+  try Test.eq(done.reply.to_a, "+PONG\r\n+OK\r\n+PONG\r\n".bytes.to_a)
+  try Test.eq(try get(shards, 0, "a".bytes), "$1\r\n1\r\n")
+  stopped(rig)
+end
+
+# A shard that has ended takes no request: only the PING before the SET
+# answers, and the connection closes.
+def test_an_ended_shard_ends_the_chunk_there() -> Result[Void]
+  rig = started_with(1, 1, LEND_MS)
+  try stopped(rig)
+  requests = [["PING".bytes], ["SET".bytes, "a".bytes, "1".bytes], ["PING".bytes]]
+  done = Connection.answer(rig.shards, Engine.start(fresh()), Engine.client(1), requests)
   try Test.eq(done.close, true)
   try Test.eq(done.reply.to_a, "+PONG\r\n".bytes.to_a)
-  try Test.eq(try get(shards, 0, "a".bytes), "$-1\r\n")
-  stopped(rig)
+  ok()
 end
 
 # A lend whose caller gave up: the call closed its reply channel, so the
