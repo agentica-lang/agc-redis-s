@@ -80,6 +80,56 @@ def counter() -> ATS[String, Int]
   table
 end
 
+## The requests in order. A row of requests for one shard goes as one message;
+## every message is sent before the first answer is read, so the shards work at
+## once. A request on several shards locks them in order of shard (no two
+## connections can wait for each other); the requests sent before it to those
+## shards run first, as an inbox keeps its order. A shard that does not take a
+## message ends the chunk there: only the requests before it run, and the
+## connection closes after their replies.
+def answer(shards: Shards, empty: Store, client: Client, requests: List[List[Bytes]]) -> Done
+  pending: List[Pending] = []
+  batch = Batch()
+  who = client
+  closing = false
+  for argv in requests
+    route = Routes.route(shards.table, argv, shards.addresses.size)
+    case route
+      Route.One(id) ->
+        if id != batch.shard
+          case flushed(shards, batch, who)
+            some(sent) -> pending = pending.concat(sent)
+            none -> return collected(pending, who, true)
+          end
+
+          batch = Batch(shard: id)
+        end
+
+        batch = batch.with(requests: batch.requests.push(argv))
+      _ ->
+        case flushed(shards, batch, who)
+          some(sent) -> pending = pending.concat(sent)
+          none -> return collected(pending, who, true)
+        end
+
+        batch = Batch()
+        done = elsewhere(shards, empty, route, who, argv)
+        who = done.client
+        pending = pending.push(Pending.Ready(done.reply))
+        closing = done.close
+    end
+
+    break if closing
+  end
+
+  return collected(pending, who, true) if closing
+
+  case flushed(shards, batch, who)
+    some(sent) -> collected(pending.concat(sent), who, false)
+    none -> collected(pending, who, true)
+  end
+end
+
 ## Locks the shards `ids` in order, runs the request on what they lent, and
 ## gives each its part back. Every lender keeps its keys until its `Loan.until`;
 ## the request changes them only when all of them are given back `margin_ms`
@@ -105,13 +155,20 @@ def borrowed(shards: Shards, ids: List[Int], keys: Optional[List[Bytes]], client
   count = shards.addresses.size
   now = shards.now_ms.call()
   joint = Cluster.run_joined(shards.table, lent, loans[0].seed, ids, count, client, argv, now)
-  return released(backs, failed) if wait_ms(shards, loans) <= 0
+  # Late, a read can still answer: no lender gets anything back either way.
+  if wait_ms(shards, loans) <= 0
+    return released(backs, ran(joint.ran)) if not joint.ran.changed
+
+    return released(backs, failed)
+  end
 
   seed = joint.ran.store.seed
   for at in 0...ids.size
     # Only a shard past its `until` refuses, and the check above leaves the
     # margin: a refusal means the machine stalled that long.
-    return failed if not backs[at].send(Payback(databases: joint.backs[at], seed: seed), 0).ok?
+    if not backs[at].send(Payback(databases: joint.backs[at], seed: seed), 0).ok?
+      return released(backs.drop(at + 1), failed)
+    end
   end
 
   ran(joint.ran)
@@ -154,56 +211,6 @@ end
 def send(conn: Dock.Conn, bytes: Bytes) -> Void
   if not bytes.empty?
     _ = Dock.send(conn, bytes)
-  end
-end
-
-# The requests in order. A row of requests for one shard goes as one message;
-# every message is sent before the first answer is read, so the shards work at
-# once. A request on several shards locks them in order of shard (no two
-# connections can wait for each other); the requests sent before it to those
-# shards run first, as an inbox keeps its order. A shard that does not take a
-# message ends the chunk there: only the requests before it run, and the
-# connection closes after their replies.
-def answer(shards: Shards, empty: Store, client: Client, requests: List[List[Bytes]]) -> Done
-  pending: List[Pending] = []
-  batch = Batch()
-  who = client
-  closing = false
-  for argv in requests
-    route = Routes.route(shards.table, argv, shards.addresses.size)
-    case route
-      Route.One(id) ->
-        if id != batch.shard
-          case flushed(shards, batch, who)
-            some(sent) -> pending = pending.concat(sent)
-            none -> return collected(pending, who, true)
-          end
-
-          batch = Batch(shard: id)
-        end
-
-        batch = batch.with(requests: batch.requests.push(argv))
-      _ ->
-        case flushed(shards, batch, who)
-          some(sent) -> pending = pending.concat(sent)
-          none -> return collected(pending, who, true)
-        end
-
-        batch = Batch()
-        done = elsewhere(shards, empty, route, who, argv)
-        who = done.client
-        pending = pending.push(Pending.Ready(done.reply))
-        closing = done.close
-    end
-
-    break if closing
-  end
-
-  return collected(pending, who, true) if closing
-
-  case flushed(shards, batch, who)
-    some(sent) -> collected(pending.concat(sent), who, false)
-    none -> collected(pending, who, true)
   end
 end
 
