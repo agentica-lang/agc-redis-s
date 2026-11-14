@@ -127,8 +127,9 @@ effects) -> RESP writer -> back to the connection -> the client
 
 `--shards N` (default 1) actors (`std/actor`) split the keys by hash slot, as
 Redis Cluster does (CRC16 with the `{tag}` rule). Each owns its keys and
-handles its messages one at a time, so no command needs a lock; a ticker task
-wakes each for the active expiry when no request comes. `dock` runs one
+handles its messages one at a time, so no command needs a lock; its receive
+timeout (`Actor.Timeout`) wakes it for the active expiry when no request comes.
+`dock` runs one
 handler task per connection. It reads a chunk, routes each request
 (`shards/route.agc`) and sends each row of requests for one shard as one
 message with a reply channel, all before it reads the first answer, so the

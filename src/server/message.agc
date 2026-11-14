@@ -28,6 +28,4 @@ enum Message
   ## Lend these keys (none: all of them) on the first channel, then handle
   ## nothing until they come back on the second.
   Lend(Optional[List[Bytes]], Channel[Loan], Channel[Payback])
-  ## No request came for a while: time for the active expiry.
-  Tick
 end

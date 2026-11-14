@@ -36,12 +36,17 @@ struct State
   swept_at: Int = 0
 end
 
-## Starts the shard and the ticker that wakes its sweep when no request comes.
+## Starts the shard. A receive timeout wakes its sweep when no request came for
+## `SWEEP_MS`; a busy shard sweeps on its requests.
 def start(setup: Setup, capacity: Int) -> Actor.Ref[State, Message]
-  behaviour: Actor.Behaviour[State, Message] = Actor.Behaviour(init: -> { first(setup) }, handle: &step)
-  shard = Actor.start(behaviour, Actor.Options(capacity: capacity))
-  _ticker = Task.spawn(&tick, shard.address)
-  shard
+  idle = Actor.Timeout(after_ms: &idle_ms, handle: &woken)
+  behaviour: Actor.Behaviour[State, Message] = Actor.Behaviour(
+    init: -> { first(setup) },
+    handle: &step,
+    timeout: some(idle),
+  )
+
+  Actor.start(behaviour, Actor.Options(capacity: capacity))
 end
 
 ## The state before the first message.
@@ -55,7 +60,6 @@ def handle(state: State, message: Message) -> State
   now = state.now_ms.call()
   current = swept(state, now)
   case message
-    Message.Tick -> current
     Message.Run(requests, client, answer) -> run(current, requests, client, answer, now)
     Message.Sizes(answer) ->
       _ = Actor.reply(answer, Databases.sizes(current.store.databases))
@@ -64,21 +68,16 @@ def handle(state: State, message: Message) -> State
   end
 end
 
+## No message came for `SWEEP_MS`: the sweep runs if it is due.
+def idle(state: State) -> State = swept(state, state.now_ms.call())
+
 private
 
 def step(state: State, message: Message) -> Actor.Step[State] = Actor.continue(handle(state, message))
 
-# A full inbox means requests are coming, and each one sweeps when it is due:
-# the tick is only for an idle server, so it never waits for room.
-def tick(address: Address[Message]) -> Void
-  while true
-    Task.sleep(Engine.SWEEP_MS)
-    case Actor.cast(address, Message.Tick, 0)
-      ok(_) -> nil
-      error(e) -> return if e.is_a?("channel.gone")
-    end
-  end
-end
+def idle_ms(_state: State) -> Optional[Int] = some(Engine.SWEEP_MS)
+
+def woken(state: State) -> Actor.Step[State] = Actor.continue(idle(state))
 
 def swept(state: State, now: Int) -> State
   return state if not Engine.sweep_due?(state.swept_at, now)

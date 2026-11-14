@@ -7,6 +7,7 @@ import Shard from "../../src/server/shard"
 import Slot from "../../src/shards/slot"
 import Table from "../../src/commands/table"
 import {Loan, Message, Payback} from "../../src/server/message"
+import Databases from "../../src/store/databases"
 import {fresh} from "../../src/store/databases"
 
 LEND_MS = 300
@@ -58,8 +59,8 @@ def test_a_refused_request_ends_the_chunk_there() -> Result[Void]
   back: Channel[Payback] = Channel.new(1)
   try shards.addresses[0].send(Message.Lend(none, out, back), 1000)
   _ = try out.recv(1000)
-  # The ticker may have filled the inbox already: full either way.
-  _ = shards.addresses[0].send(Message.Tick, 0)
+  sizes: Channel[List[Databases.Size]] = Channel.new(1)
+  try shards.addresses[0].send(Message.Sizes(sizes), 1000)
   requests = [["PING".bytes], ["SET".bytes, "a".bytes, "1".bytes], ["PING".bytes]]
   done = Connection.answer(shards, Engine.start(fresh()), Engine.client(1), requests)
   back.close
@@ -106,13 +107,11 @@ def started_with(count: Int, capacity: Int, lend_ms: Int) -> Rig
   Rig(shards: shards, refs: refs)
 end
 
-# The tickers end at their next tick after the shards stopped.
 def stopped(rig: Rig) -> Result[Void]
   for ref in rig.refs
     try Actor.stop(ref, 1000)
   end
 
-  Task.sleep(2 * Engine.SWEEP_MS)
   ok()
 end
 
