@@ -47,6 +47,10 @@ class Server:
     def connect(self):
         return socket.create_connection(("127.0.0.1", self.port), timeout=5)
 
+    def rest_of_output(self):
+        """What the process wrote after the `ready` line, once it ended."""
+        return self.proc.stdout.read()
+
     def stop(self):
         if self.proc.poll() is None:
             self.proc.terminate()
