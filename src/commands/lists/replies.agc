@@ -6,21 +6,10 @@ import Lists from "../../store/lists"
 import {End, Seq, Span} from "../../store/lists"
 
 ## The elements of the span as an array of bulk strings, already in RESP form
-## (`Reply.Raw`): the parts of every element go into one concat, with no
-## `Reply` per element; `reverse` starts at the end of the span, as a pop from the tail replies.
+## (`Reply.Raw`): every element is written into one build, with no `Reply` per
+## element; `reverse` starts at the end of the span, as a pop from the tail replies.
 def range(seq: Seq, span: Span, reverse: Bool) -> Reply
-  parts = [Writer.array_header(span.last - span.first + 1)]
-  for step in 0..(span.last - span.first)
-    index = span.first + step
-    if reverse
-      index = span.last - step
-    end
-
-    element = Lists.element(seq, index)
-    parts = parts.push(Writer.bulk_header(element.size)).push(element).push(CRLF)
-  end
-
-  Reply.Raw(Bytes.concat(parts))
+  Reply.Raw(Bytes.build do |out| write_range(out, seq, span, reverse) end)
 end
 
 ## The reply of a pop of `taken` elements (1 up to the length) from `side`: from
@@ -34,4 +23,14 @@ end
 
 private
 
-CRLF = "\r\n".bytes
+def write_range(out: Bytes.Builder, seq: Seq, span: Span, reverse: Bool) -> Void
+  out.write("*", span.last - span.first + 1, "\r\n")
+  for step in 0..(span.last - span.first)
+    index = span.first + step
+    if reverse
+      index = span.last - step
+    end
+
+    Writer.write_bulk(out, Lists.element(seq, index))
+  end
+end
