@@ -140,7 +140,9 @@ connection, which keeps the session. A request on the keys of several shards
 order of shard, so two connections never wait for each other: each lends its
 keys, the request runs on their join, and each takes its part back. The keys
 come back before the first lender stops waiting (`Loan.until`, less a margin),
-or the request changes nothing and the connection closes with no reply. DBSIZE
+or the request changes nothing and the connection closes with no reply.
+A failed send of a result (payback) closes the client, never a silent +OK;
+a pipeline stops at the first dropped request. DBSIZE
 and INFO only add up the sizes each shard reports (`Call.sizes`). The
 connection sends the replies in the order of the requests with `Dock.send`,
 which never waits: a client that does not read is dropped at the cap
