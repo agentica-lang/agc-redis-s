@@ -37,7 +37,8 @@ test/                unit tests of pure logic, the same path as the source;
                      dispatch -> store -> writer -> reply bytes), `request`
 integration/         a smoke test and a stress test of the real binary
                      (Python, standard library only)
-tools/               check_purity.py and its tests (Python, standard library)
+tools/               check_purity.py and its tests (Python, standard library);
+                     bench.py, a redis-benchmark load run against a local server
 ```
 
 ## Rules

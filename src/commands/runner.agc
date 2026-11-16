@@ -89,7 +89,7 @@ private
 def encoded(replies: List[Reply]) -> Bytes
   return Writer.encode(replies[0]) if replies.size == 1
 
-  Bytes.concat(replies.map do |r| Writer.encode(r) end)
+  Writer.encode_all(replies)
 end
 
 def changed?(change: Change) -> Bool
