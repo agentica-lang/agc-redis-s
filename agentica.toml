@@ -1,5 +1,5 @@
 name = "agc-redis-s"
-agentica = "0.33.0"
+agentica = "0.38.0"
 
 # Every bare `end` is followed by an empty line, as `agentica fmt` writes it.
 [style]
@@ -7,4 +7,4 @@ blank_line_after_end = true
 
 [dependencies]
 prop = { git = "https://github.com/agentica-lang/packages", tag = "prop-0.4.1", subdir = "prop" }
-dock = { git = "https://github.com/agentica-lang/packages", tag = "dock-0.3.0", subdir = "dock" }
+dock = { git = "https://github.com/agentica-lang/packages", tag = "dock-0.4.0", subdir = "dock" }
